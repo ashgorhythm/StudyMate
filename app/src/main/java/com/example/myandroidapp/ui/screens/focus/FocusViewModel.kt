@@ -1,10 +1,16 @@
 package com.example.myandroidapp.ui.screens.focus
 
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.myandroidapp.data.model.AllowedContact
 import com.example.myandroidapp.data.model.StudySession
+import com.example.myandroidapp.data.model.Subject
 import com.example.myandroidapp.data.repository.StudyRepository
+import com.example.myandroidapp.service.FocusModeManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -19,7 +25,14 @@ data class FocusUiState(
     val currentSubject: String = "Select Subject",
     val todaySessionCount: Int = 0,
     val todayTotalMinutes: Int = 0,
-    val selectedAmbientSound: String = "Silence"
+    val selectedAmbientSound: String = "Silence",
+    // Focus Mode Settings
+    val isDndEnabled: Boolean = true,
+    val hasDndPermission: Boolean = false,
+    val allowedContacts: List<AllowedContact> = emptyList(),
+    val showAllowedContactsDialog: Boolean = false,
+    val showSubjectPicker: Boolean = false,
+    val subjects: List<Subject> = emptyList()
 )
 
 class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
@@ -28,9 +41,23 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
     val uiState: StateFlow<FocusUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var appContext: Context? = null
 
     init {
         loadTodayStats()
+        loadSubjects()
+    }
+
+    fun setAppContext(context: Context) {
+        appContext = context.applicationContext
+        checkDndPermission()
+    }
+
+    private fun checkDndPermission() {
+        appContext?.let { ctx ->
+            val hasPerm = FocusModeManager.hasNotificationPolicyAccess(ctx)
+            _uiState.update { it.copy(hasDndPermission = hasPerm) }
+        }
     }
 
     private fun loadTodayStats() {
@@ -49,6 +76,14 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
         }
     }
 
+    private fun loadSubjects() {
+        viewModelScope.launch {
+            repository.allSubjects.collect { subjects ->
+                _uiState.update { it.copy(subjects = subjects) }
+            }
+        }
+    }
+
     fun setDuration(minutes: Int) {
         if (!_uiState.value.isRunning) {
             _uiState.update {
@@ -62,13 +97,58 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
     }
 
     fun setSubject(subject: String) {
-        _uiState.update { it.copy(currentSubject = subject) }
+        _uiState.update { it.copy(currentSubject = subject, showSubjectPicker = false) }
+    }
+
+    fun showSubjectPicker() {
+        _uiState.update { it.copy(showSubjectPicker = true) }
+    }
+
+    fun dismissSubjectPicker() {
+        _uiState.update { it.copy(showSubjectPicker = false) }
     }
 
     fun setAmbientSound(sound: String) {
         _uiState.update { it.copy(selectedAmbientSound = sound) }
     }
 
+    // ── DND Settings ──
+    fun toggleDnd(enabled: Boolean) {
+        _uiState.update { it.copy(isDndEnabled = enabled) }
+    }
+
+    fun requestDndPermission(context: Context) {
+        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        context.startActivity(intent)
+    }
+
+    fun refreshDndPermission() {
+        checkDndPermission()
+    }
+
+    // ── Allowed Contacts ──
+    fun showAllowedContactsDialog() {
+        _uiState.update { it.copy(showAllowedContactsDialog = true) }
+    }
+
+    fun dismissAllowedContactsDialog() {
+        _uiState.update { it.copy(showAllowedContactsDialog = false) }
+    }
+
+    fun addAllowedContact(contact: AllowedContact) {
+        _uiState.update {
+            it.copy(allowedContacts = it.allowedContacts + contact)
+        }
+    }
+
+    fun removeAllowedContact(contact: AllowedContact) {
+        _uiState.update {
+            it.copy(allowedContacts = it.allowedContacts - contact)
+        }
+    }
+
+    // ── Timer Controls ──
     fun toggleTimer() {
         if (_uiState.value.isRunning) {
             pauseTimer()
@@ -79,6 +159,17 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
 
     private fun startTimer() {
         _uiState.update { it.copy(isRunning = true) }
+
+        // Enable DND if enabled and has permission
+        if (_uiState.value.isDndEnabled) {
+            appContext?.let { ctx ->
+                if (FocusModeManager.hasNotificationPolicyAccess(ctx)) {
+                    FocusModeManager.enableDndMode(ctx, allowPriorityCalls = _uiState.value.allowedContacts.isNotEmpty())
+                    FocusModeManager.silencePhone(ctx)
+                }
+            }
+        }
+
         timerJob = viewModelScope.launch {
             while (_uiState.value.timerSeconds > 0 && _uiState.value.isRunning) {
                 delay(1000)
@@ -93,6 +184,14 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
     private fun pauseTimer() {
         timerJob?.cancel()
         _uiState.update { it.copy(isRunning = false) }
+
+        // Disable DND on pause
+        appContext?.let { ctx ->
+            if (FocusModeManager.hasNotificationPolicyAccess(ctx)) {
+                FocusModeManager.disableDndMode(ctx)
+                FocusModeManager.restoreRinger(ctx)
+            }
+        }
     }
 
     fun resetTimer() {
@@ -104,10 +203,27 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
                 totalSeconds = it.selectedDuration * 60
             )
         }
+
+        // Disable DND on reset
+        appContext?.let { ctx ->
+            if (FocusModeManager.hasNotificationPolicyAccess(ctx)) {
+                FocusModeManager.disableDndMode(ctx)
+                FocusModeManager.restoreRinger(ctx)
+            }
+        }
     }
 
     private fun completeSession() {
         _uiState.update { it.copy(isRunning = false) }
+
+        // Disable DND when session completes
+        appContext?.let { ctx ->
+            if (FocusModeManager.hasNotificationPolicyAccess(ctx)) {
+                FocusModeManager.disableDndMode(ctx)
+                FocusModeManager.restoreRinger(ctx)
+            }
+        }
+
         viewModelScope.launch {
             val session = StudySession(
                 subjectId = 0,
@@ -125,6 +241,13 @@ class FocusViewModel(private val repository: StudyRepository) : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         timerJob?.cancel()
+        // Make sure DND is disabled when ViewModel is cleared
+        appContext?.let { ctx ->
+            if (FocusModeManager.hasNotificationPolicyAccess(ctx)) {
+                FocusModeManager.disableDndMode(ctx)
+                FocusModeManager.restoreRinger(ctx)
+            }
+        }
     }
 }
 

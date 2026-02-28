@@ -19,13 +19,39 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.data.model.Subject
+import com.example.myandroidapp.ui.screens.dashboard.AddEditTaskDialog
 import com.example.myandroidapp.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(viewModel: ProgressViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showAddDialog by remember { mutableStateOf(false) }
+
+    // Subject Dialogs
+    if (uiState.showAddSubjectDialog) {
+        AddEditSubjectDialog(
+            existingSubject = uiState.editingSubject,
+            onDismiss = { viewModel.dismissSubjectDialog() },
+            onSave = { subject -> viewModel.saveSubject(subject) }
+        )
+    }
+
+    if (uiState.showDeleteConfirmation && uiState.subjectToDelete != null) {
+        DeleteConfirmationDialog(
+            subjectName = uiState.subjectToDelete!!.name,
+            onDismiss = { viewModel.dismissDeleteConfirmation() },
+            onConfirm = { viewModel.deleteSubject(uiState.subjectToDelete!!) }
+        )
+    }
+
+    // Add Task Dialog
+    if (uiState.showAddTaskDialog) {
+        AddEditTaskDialog(
+            subjects = uiState.subjects,
+            onDismiss = { viewModel.dismissAddTaskDialog() },
+            onSave = { task -> viewModel.addTask(task) }
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -77,12 +103,26 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             Spacer(modifier = Modifier.height(28.dp))
 
             // ── Subject Cards ──
-            Text(
-                "By Subject",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "By Subject",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                TextButton(
+                    onClick = { viewModel.showAddSubjectDialog() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = TealPrimary)
+                ) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add Subject", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
 
             if (uiState.subjects.isEmpty()) {
@@ -105,12 +145,16 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("No subjects yet", color = TextPrimary, fontSize = 16.sp)
-                        Text("Add sample data from Dashboard", color = TextSecondary, fontSize = 13.sp)
+                        Text("Tap '+ Add Subject' to get started", color = TextSecondary, fontSize = 13.sp)
                     }
                 }
             } else {
                 uiState.subjects.forEach { subject ->
-                    SubjectProgressCard(subject)
+                    SubjectProgressCard(
+                        subject = subject,
+                        onEdit = { viewModel.showEditSubjectDialog(subject) },
+                        onDelete = { viewModel.showDeleteConfirmation(subject) }
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
@@ -121,9 +165,9 @@ fun ProgressScreen(viewModel: ProgressViewModel) {
             WeeklyHeatmap()
         }
 
-        // FAB
+        // FAB - now opens Add Task dialog
         FloatingActionButton(
-            onClick = { showAddDialog = true },
+            onClick = { viewModel.showAddTaskDialog() },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 110.dp),
@@ -183,8 +227,13 @@ private fun OverallProgressBar(progress: Float, completed: Int, total: Int) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SubjectProgressCard(subject: Subject) {
+private fun SubjectProgressCard(
+    subject: Subject,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     val color = try {
         Color(android.graphics.Color.parseColor(subject.colorHex))
     } catch (e: Exception) {
@@ -200,8 +249,15 @@ private fun SubjectProgressCard(subject: Subject) {
         label = "subjectProgress"
     )
 
+    var showContextMenu by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { onEdit() },
+                onLongClick = { showContextMenu = true }
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
         border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
@@ -226,7 +282,8 @@ private fun SubjectProgressCard(subject: Subject) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         subject.name,
@@ -234,12 +291,60 @@ private fun SubjectProgressCard(subject: Subject) {
                         color = TextPrimary,
                         fontSize = 15.sp
                     )
-                    Text(
-                        "${(animatedProgress * 100).toInt()}%",
-                        color = color,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${(animatedProgress * 100).toInt()}%",
+                            color = color,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        // Context menu
+                        Box {
+                            IconButton(
+                                onClick = { showContextMenu = true },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    "More options",
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showContextMenu,
+                                onDismissRequest = { showContextMenu = false },
+                                modifier = Modifier.background(NavyLight)
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Edit, null, tint = TealPrimary, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Edit", color = TextPrimary)
+                                        }
+                                    },
+                                    onClick = {
+                                        showContextMenu = false
+                                        onEdit()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Delete", color = RedError)
+                                        }
+                                    },
+                                    onClick = {
+                                        showContextMenu = false
+                                        onDelete()
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(

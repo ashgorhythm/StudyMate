@@ -12,20 +12,74 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myandroidapp.data.model.AllowedContact
+import com.example.myandroidapp.data.model.Subject
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 
 @Composable
 fun FocusScreen(viewModel: FocusViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Supply context to ViewModel for DND management
+    LaunchedEffect(Unit) {
+        viewModel.setAppContext(context)
+    }
+
+    // Refresh DND permission when returning from settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshDndPermission()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Subject Picker Dialog
+    if (uiState.showSubjectPicker) {
+        SubjectPickerDialog(
+            subjects = uiState.subjects,
+            currentSubject = uiState.currentSubject,
+            onSelect = { viewModel.setSubject(it) },
+            onDismiss = { viewModel.dismissSubjectPicker() }
+        )
+    }
+
+    // Allowed Contacts Dialog
+    if (uiState.showAllowedContactsDialog) {
+        AllowedContactsDialog(
+            allowedContacts = uiState.allowedContacts,
+            onDismiss = { viewModel.dismissAllowedContactsDialog() },
+            onAddContact = {
+                // Add a sample contact for demo (in a real app, this would open a contact picker)
+                viewModel.addAllowedContact(
+                    AllowedContact(
+                        name = "Emergency Contact",
+                        phoneNumber = "+1 (555) 555-0100"
+                    )
+                )
+            },
+            onRemoveContact = { viewModel.removeAllowedContact(it) }
+        )
+    }
+
+    val adaptive = rememberAdaptiveInfo()
 
     Box(
         modifier = Modifier
@@ -34,27 +88,63 @@ fun FocusScreen(viewModel: FocusViewModel) {
                 Brush.verticalGradient(
                     colors = listOf(NavyDark, Color(0xFF050714))
                 )
-            )
+            ),
+        contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
+                .then(
+                    if (adaptive.maxContentWidth != androidx.compose.ui.unit.Dp.Unspecified)
+                        Modifier.widthIn(max = adaptive.maxContentWidth)
+                    else Modifier
+                )
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(top = 48.dp, bottom = 100.dp),
+                .padding(horizontal = adaptive.horizontalPadding)
+                .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = if (adaptive.isTablet) 32.dp else 100.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ── Focus Mode Banner ──
             FocusModeBanner(uiState.isRunning)
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ── Current Subject ──
-            Text(
-                "Studying: ${uiState.currentSubject}",
-                fontSize = 16.sp,
-                color = TextSecondary,
-                fontWeight = FontWeight.Medium
-            )
+            // ── Current Subject (clickable) ──
+            Card(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = !uiState.isRunning) { viewModel.showSubjectPicker() },
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = BorderStroke(1.dp, PurpleAccent.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.MenuBook,
+                        null,
+                        tint = PurpleAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Studying: ${uiState.currentSubject}",
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (!uiState.isRunning) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(32.dp))
 
             // ── Timer Ring ──
@@ -88,6 +178,17 @@ fun FocusScreen(viewModel: FocusViewModel) {
             )
             Spacer(modifier = Modifier.height(28.dp))
 
+            // ── Focus Settings (DND + Contacts) ──
+            FocusSettingsCard(
+                isDndEnabled = uiState.isDndEnabled,
+                hasDndPermission = uiState.hasDndPermission,
+                onToggleDnd = { viewModel.toggleDnd(it) },
+                onRequestDndPermission = { viewModel.requestDndPermission(context) },
+                allowedContactsCount = uiState.allowedContacts.size,
+                onManageContacts = { viewModel.showAllowedContactsDialog() }
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+
             // ── Today's Stats ──
             TodayStats(
                 sessions = uiState.todaySessionCount,
@@ -95,6 +196,96 @@ fun FocusScreen(viewModel: FocusViewModel) {
             )
         }
     }
+}
+
+@Composable
+private fun SubjectPickerDialog(
+    subjects: List<Subject>,
+    currentSubject: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NavyMedium,
+        titleContentColor = TextPrimary,
+        title = {
+            Text("Select Subject", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        },
+        text = {
+            Column {
+                if (subjects.isEmpty()) {
+                    Text(
+                        "No subjects added yet.\nAdd subjects from the Progress tab.",
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                } else {
+                    subjects.forEach { subject ->
+                        val isSelected = currentSubject == subject.name
+                        val color = try {
+                            Color(android.graphics.Color.parseColor(subject.colorHex))
+                        } catch (e: Exception) {
+                            TealPrimary
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onSelect(subject.name) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color.copy(alpha = 0.15f) else SurfaceCard
+                            ),
+                            border = if (isSelected) BorderStroke(1.dp, color.copy(alpha = 0.5f)) else null
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(color.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(subject.icon, fontSize = 18.sp)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    subject.name,
+                                    color = TextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 15.sp
+                                )
+                                if (isSelected) {
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        null,
+                                        tint = color,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = TealPrimary)
+            ) {
+                Text("Done", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }
 
 @Composable

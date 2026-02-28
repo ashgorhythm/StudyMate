@@ -26,4 +26,14 @@ interface SubjectDao {
 
     @Query("UPDATE subjects SET totalStudyMinutes = totalStudyMinutes + :minutes WHERE id = :subjectId")
     suspend fun addStudyMinutes(subjectId: Long, minutes: Long)
+
+    // Backup/Restore
+    @Query("SELECT * FROM subjects")
+    suspend fun getAllSubjectsOnce(): List<Subject>
+
+    @Query("DELETE FROM subjects")
+    suspend fun deleteAllSubjects()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(subjects: List<Subject>)
 }

@@ -35,4 +35,14 @@ interface StudyTaskDao {
 
     @Query("UPDATE study_tasks SET isCompleted = :completed WHERE id = :taskId")
     suspend fun toggleTaskCompletion(taskId: Long, completed: Boolean)
+
+    // Backup/Restore
+    @Query("SELECT * FROM study_tasks")
+    suspend fun getAllTasksOnce(): List<StudyTask>
+
+    @Query("DELETE FROM study_tasks")
+    suspend fun deleteAllTasks()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(tasks: List<StudyTask>)
 }

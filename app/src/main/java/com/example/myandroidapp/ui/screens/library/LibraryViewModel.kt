@@ -1,5 +1,8 @@
 package com.example.myandroidapp.ui.screens.library
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -35,8 +38,15 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
     fun setCategory(category: String) {
         _uiState.update { it.copy(selectedCategory = category) }
         viewModelScope.launch {
-            val flow = if (category == "All") repository.allFiles
-            else repository.getFilesByType(category.uppercase())
+            val typeForQuery = when (category) {
+                "PDFs" -> "PDF"
+                "Notes" -> "NOTE"
+                "Images" -> "IMAGE"
+                "Videos" -> "VIDEO"
+                else -> null
+            }
+            val flow = if (typeForQuery == null) repository.allFiles
+            else repository.getFilesByType(typeForQuery)
             flow.collect { files ->
                 _uiState.update { it.copy(files = files) }
             }
@@ -63,6 +73,64 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
     fun toggleFavorite(fileId: Long, currentFav: Boolean) {
         viewModelScope.launch {
             repository.toggleFileFavorite(fileId, !currentFav)
+        }
+    }
+
+    fun deleteFile(file: StudyFile) {
+        viewModelScope.launch {
+            repository.deleteFile(file)
+        }
+    }
+
+    /**
+     * Process a file selected via SAF (Storage Access Framework).
+     * Extracts file metadata from the content URI and stores it in the database.
+     */
+    fun processPickedFile(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val contentResolver = context.contentResolver
+
+            var fileName = "Unknown File"
+            var fileSize = 0L
+
+            // Query the content resolver for file metadata
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (nameIndex >= 0) fileName = cursor.getString(nameIndex) ?: "Unknown File"
+                    if (sizeIndex >= 0) fileSize = cursor.getLong(sizeIndex)
+                }
+            }
+
+            // Determine file type from extension
+            val extension = fileName.substringAfterLast('.', "").lowercase()
+            val fileType = when (extension) {
+                "pdf" -> "PDF"
+                "doc", "docx", "txt", "md", "rtf" -> "NOTE"
+                "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg" -> "IMAGE"
+                "mp4", "avi", "mkv", "mov", "webm" -> "VIDEO"
+                else -> "NOTE"
+            }
+
+            // Take persistent URI permission so the file can be accessed later
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Some providers don't support persistent permissions
+            }
+
+            val studyFile = StudyFile(
+                fileName = fileName,
+                filePath = uri.toString(),
+                fileType = fileType,
+                subject = "",
+                fileSize = fileSize
+            )
+            repository.insertFile(studyFile)
         }
     }
 

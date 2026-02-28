@@ -26,4 +26,18 @@ interface StudySessionDao {
 
     @Delete
     suspend fun deleteSession(session: StudySession)
+
+    // Backup/Restore
+    @Query("SELECT * FROM study_sessions")
+    suspend fun getAllSessionsOnce(): List<StudySession>
+
+    @Query("DELETE FROM study_sessions")
+    suspend fun deleteAllSessions()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(sessions: List<StudySession>)
+
+    // Streak calculation — get distinct study days
+    @Query("SELECT DISTINCT startTime / 86400000 AS day FROM study_sessions WHERE isCompleted = 1 ORDER BY day DESC")
+    suspend fun getStudyDayTimestamps(): List<Long>
 }

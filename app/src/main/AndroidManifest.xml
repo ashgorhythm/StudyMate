@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Internet: Required for Gemini AI API calls -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Focus Mode: DND and notification management -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <!-- File Library: Read external storage (for older Android versions) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Contacts: Read contacts for allowed contacts in Focus Mode -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <application
         android:name=".StudentCompanionApp"
         android:allowBackup="true"

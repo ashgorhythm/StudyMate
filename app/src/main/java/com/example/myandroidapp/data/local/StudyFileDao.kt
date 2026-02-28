@@ -29,4 +29,14 @@ interface StudyFileDao {
 
     @Query("UPDATE study_files SET isFavorite = :fav WHERE id = :fileId")
     suspend fun toggleFavorite(fileId: Long, fav: Boolean)
+
+    // Backup/Restore
+    @Query("SELECT * FROM study_files")
+    suspend fun getAllFilesOnce(): List<StudyFile>
+
+    @Query("DELETE FROM study_files")
+    suspend fun deleteAllFiles()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(files: List<StudyFile>)
 }
