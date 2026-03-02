@@ -1,6 +1,9 @@
 package com.example.myandroidapp.ui.screens.library
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -25,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.data.model.StudyFile
+import com.example.myandroidapp.ui.screens.library.viewer.FileViewerScreen
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 
@@ -33,6 +37,18 @@ import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 fun LibraryScreen(viewModel: LibraryViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // In-app file viewer state
+    var viewingFile by remember { mutableStateOf<StudyFile?>(null) }
+
+    // Show in-app file viewer if a file is being viewed
+    viewingFile?.let { file ->
+        FileViewerScreen(
+            file = file,
+            onDismiss = { viewingFile = null }
+        )
+        return
+    }
 
     // SAF File Picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -136,28 +152,16 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     Spacer(Modifier.height(12.dp))
                     Text("No files yet", color = TextPrimary, fontSize = 16.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text("Upload files or load sample data", color = TextSecondary, fontSize = 13.sp)
+                    Text("Tap + to upload your first file", color = TextSecondary, fontSize = 13.sp)
                     Spacer(Modifier.height(20.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(
-                            onClick = {
-                                filePickerLauncher.launch(arrayOf("*/*"))
-                            },
-                            colors = ButtonDefaults.buttonColors(TealPrimary, NavyDark),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Upload File", fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.addSampleFiles() },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, TextMuted),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
-                        ) {
-                            Text("Sample Data", fontWeight = FontWeight.Medium)
-                        }
+                    Button(
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        colors = ButtonDefaults.buttonColors(TealPrimary, NavyDark),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Upload File", fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
@@ -172,7 +176,8 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                             FileCard(
                                 file = file,
                                 onFav = { viewModel.toggleFavorite(file.id, file.isFavorite) },
-                                onDelete = { viewModel.deleteFile(file) }
+                                onDelete = { viewModel.deleteFile(file) },
+                                onOpen = { viewingFile = file }
                             )
                         }
                     }
@@ -186,7 +191,8 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                             FileListItem(
                                 file = file,
                                 onFav = { viewModel.toggleFavorite(file.id, file.isFavorite) },
-                                onDelete = { viewModel.deleteFile(file) }
+                                onDelete = { viewModel.deleteFile(file) },
+                                onOpen = { viewingFile = file }
                             )
                         }
                     }
@@ -196,12 +202,10 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
         // ── FAB - Real File Picker ──
         FloatingActionButton(
-            onClick = {
-                filePickerLauncher.launch(arrayOf("*/*"))
-            },
+            onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 110.dp),
+                .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 12.dp),
             containerColor = TealPrimary,
             contentColor = NavyDark,
             shape = CircleShape
@@ -213,7 +217,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit) {
+private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit, onOpen: () -> Unit) {
     val tc = when (file.fileType.uppercase()) {
         "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
     }
@@ -247,23 +251,41 @@ private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit) {
         },
         enableDismissFromStartToEnd = false
     ) {
-        Card(Modifier.fillMaxWidth(), RoundedCornerShape(16.dp), CardDefaults.cardColors(SurfaceCard), border = BorderStroke(1.dp, tc.copy(0.15f))) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpen() },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(SurfaceCard),
+            border = BorderStroke(1.dp, tc.copy(0.15f))
+        ) {
             Column(Modifier.padding(12.dp)) {
-                Box(Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)), Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(72.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(tc.copy(0.1f)),
+                    Alignment.Center
+                ) {
                     Icon(ti, null, tint = tc, modifier = Modifier.size(36.dp))
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(file.fileName, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    file.fileName, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
                 if (file.subject.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
                     Text(file.subject, fontSize = 10.sp, color = TextSecondary)
                 }
                 Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Text(
-                        formatFileSize(file.fileSize),
-                        fontSize = 10.sp, color = TextMuted
-                    )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(formatFileSize(file.fileSize), fontSize = 10.sp, color = TextMuted)
                     IconButton(onFav, Modifier.size(24.dp)) {
                         Icon(
                             if (file.isFavorite) Icons.Default.Star else Icons.Outlined.StarBorder, "Fav",
@@ -278,7 +300,7 @@ private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FileListItem(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit) {
+private fun FileListItem(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit, onOpen: () -> Unit) {
     val tc = when (file.fileType.uppercase()) {
         "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
     }
@@ -313,9 +335,11 @@ private fun FileListItem(file: StudyFile, onFav: () -> Unit, onDelete: () -> Uni
         enableDismissFromStartToEnd = false
     ) {
         Card(
-            Modifier.fillMaxWidth(),
-            RoundedCornerShape(14.dp),
-            CardDefaults.cardColors(SurfaceCard),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpen() },
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(SurfaceCard),
             border = BorderStroke(1.dp, tc.copy(0.1f))
         ) {
             Row(

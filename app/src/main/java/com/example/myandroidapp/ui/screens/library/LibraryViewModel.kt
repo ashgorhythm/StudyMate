@@ -134,19 +134,6 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
         }
     }
 
-    fun addSampleFiles() {
-        viewModelScope.launch {
-            val sampleFiles = listOf(
-                StudyFile(fileName = "Calculus Notes Ch1-5.pdf", filePath = "/docs/calc.pdf", fileType = "PDF", subject = "Mathematics", fileSize = 2_500_000),
-                StudyFile(fileName = "Physics Lab Report.pdf", filePath = "/docs/phys.pdf", fileType = "PDF", subject = "Physics", fileSize = 1_800_000),
-                StudyFile(fileName = "Essay Draft.docx", filePath = "/docs/essay.docx", fileType = "NOTE", subject = "English", fileSize = 450_000),
-                StudyFile(fileName = "History Timeline.png", filePath = "/docs/hist.png", fileType = "IMAGE", subject = "History", fileSize = 3_200_000),
-                StudyFile(fileName = "Algebra Lecture.mp4", filePath = "/docs/algebra.mp4", fileType = "VIDEO", subject = "Mathematics", fileSize = 45_000_000),
-                StudyFile(fileName = "Science Formulas.pdf", filePath = "/docs/formulas.pdf", fileType = "PDF", subject = "Physics", fileSize = 980_000)
-            )
-            sampleFiles.forEach { repository.insertFile(it) }
-        }
-    }
 }
 
 class LibraryViewModelFactory(private val repository: StudyRepository) : ViewModelProvider.Factory {

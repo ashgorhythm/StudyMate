@@ -3,6 +3,7 @@ package com.example.myandroidapp
 import android.app.Application
 import com.example.myandroidapp.data.local.AppDatabase
 import com.example.myandroidapp.data.repository.StudyRepository
+import com.example.myandroidapp.service.TaskReminderManager
 
 class StudentCompanionApp : Application() {
 
@@ -15,5 +16,11 @@ class StudentCompanionApp : Application() {
             sessionDao = database.studySessionDao(),
             fileDao = database.studyFileDao()
         )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Create notification channel for task reminders (required for Android 8+)
+        TaskReminderManager.createNotificationChannel(this)
     }
 }

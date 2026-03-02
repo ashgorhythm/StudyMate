@@ -25,7 +25,7 @@ class StudyRepository(
 
     fun getTasksBySubject(subject: String) = taskDao.getTasksBySubject(subject)
 
-    suspend fun insertTask(task: StudyTask) = taskDao.insertTask(task)
+    suspend fun insertTask(task: StudyTask): Long = taskDao.insertTask(task)
     suspend fun updateTask(task: StudyTask) = taskDao.updateTask(task)
     suspend fun deleteTask(task: StudyTask) = taskDao.deleteTask(task)
     suspend fun toggleTaskCompletion(taskId: Long, completed: Boolean) =

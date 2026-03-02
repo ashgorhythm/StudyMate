@@ -88,7 +88,7 @@ fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> U
             onClick = { viewModel.showAddTaskDialog() },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 110.dp),
+                .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 11.dp),
             containerColor = TealPrimary,
             contentColor = NavyDark,
             shape = CircleShape
@@ -130,7 +130,6 @@ private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewMo
         )
         Spacer(Modifier.height(28.dp))
         WeeklyHeatmap()
-        SampleDataButton(uiState, viewModel)
     }
 }
 
@@ -166,7 +165,6 @@ private fun TabletDashboard(
             ProgressRingSection(uiState.overallProgress, ringSize)
             Spacer(Modifier.height(24.dp))
             WeeklyHeatmap()
-            SampleDataButton(uiState, viewModel)
         }
 
         // ── Right Column: Tasks, Subjects ──
@@ -213,23 +211,6 @@ private fun QuickStatsGrid(state: DashboardUiState) {
 // ═══════════════════════════════════════════════════════
 // ── Shared Components ──
 // ═══════════════════════════════════════════════════════
-
-@Composable
-private fun SampleDataButton(uiState: DashboardUiState, viewModel: DashboardViewModel) {
-    if (uiState.totalTasks == 0 && uiState.subjects.isEmpty()) {
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { viewModel.addSampleData() },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary, contentColor = NavyDark)
-        ) {
-            Icon(Icons.Default.Add, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Load Sample Data", fontWeight = FontWeight.Bold)
-        }
-    }
-}
 
 @Composable
 private fun GreetingSection(name: String, onNavigateToSettings: () -> Unit = {}) {

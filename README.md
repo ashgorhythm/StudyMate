@@ -2,7 +2,7 @@
   <img src="assets/studymate_banner.png" alt="StudyMate Banner" width="100%"/>
 </p>
 
-<h1 align="center">📚 StudyMate</h1>
+<h1 align="center">📚 StudyBuddy</h1>
 
 <p align="center">
   <em>Your AI-Powered Study Companion — Built with Jetpack Compose & Material 3</em>
@@ -255,7 +255,6 @@ Contributions are welcome! Here's how to get started:
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 

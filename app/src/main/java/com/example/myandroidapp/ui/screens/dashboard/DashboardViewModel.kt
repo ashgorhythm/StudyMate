@@ -8,6 +8,7 @@ import com.example.myandroidapp.data.model.StudyTask
 import com.example.myandroidapp.data.model.Subject
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.data.repository.StudyRepository
+import com.example.myandroidapp.service.TaskReminderManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -38,6 +39,7 @@ class DashboardViewModel(
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
     private val userPreferences = UserPreferences(context)
+    private val appContext: Context = context.applicationContext
 
     init {
         loadDashboardData()
@@ -97,17 +99,29 @@ class DashboardViewModel(
 
     fun saveTask(task: StudyTask) {
         viewModelScope.launch {
+            val savedId: Long
             if (task.id == 0L) {
-                repository.insertTask(task)
+                savedId = repository.insertTask(task)
             } else {
                 repository.updateTask(task)
+                savedId = task.id
+                // Cancel old reminder before rescheduling
+                TaskReminderManager.cancelReminder(appContext, task.id)
             }
+            // Schedule reminder 1 hour before due
+            TaskReminderManager.scheduleReminder(
+                context = appContext,
+                taskId = savedId,
+                taskTitle = task.title,
+                dueDateMillis = task.dueDate
+            )
             _uiState.update { it.copy(showAddTaskDialog = false, editingTask = null) }
         }
     }
 
     fun deleteTask(task: StudyTask) {
         viewModelScope.launch {
+            TaskReminderManager.cancelReminder(appContext, task.id)
             repository.deleteTask(task)
         }
     }
@@ -151,27 +165,6 @@ class DashboardViewModel(
         }
     }
 
-    // ── Sample Data ──
-    fun addSampleData() {
-        viewModelScope.launch {
-            val subjects = listOf(
-                Subject(name = "Mathematics", icon = "📐", colorHex = "#13ECEC", totalTopics = 15, completedTopics = 12, totalStudyMinutes = 480),
-                Subject(name = "Physics", icon = "🔬", colorHex = "#7C4DFF", totalTopics = 12, completedTopics = 8, totalStudyMinutes = 360),
-                Subject(name = "English", icon = "📖", colorHex = "#FFAB40", totalTopics = 10, completedTopics = 7, totalStudyMinutes = 240),
-                Subject(name = "History", icon = "🏛️", colorHex = "#FF4081", totalTopics = 8, completedTopics = 5, totalStudyMinutes = 180)
-            )
-            subjects.forEach { repository.insertSubject(it) }
-
-            val tasks = listOf(
-                StudyTask(title = "Complete Calculus Ch.5", subject = "Mathematics", priority = 2, dueDate = System.currentTimeMillis() + 3600000),
-                StudyTask(title = "Physics Lab Report", subject = "Physics", priority = 2, dueDate = System.currentTimeMillis() + 7200000),
-                StudyTask(title = "Essay Draft Review", subject = "English", priority = 1, dueDate = System.currentTimeMillis() + 86400000),
-                StudyTask(title = "History Timeline", subject = "History", priority = 0, dueDate = System.currentTimeMillis() + 172800000),
-                StudyTask(title = "Trigonometry Quiz Prep", subject = "Mathematics", priority = 1, dueDate = System.currentTimeMillis() + 43200000)
-            )
-            tasks.forEach { repository.insertTask(it) }
-        }
-    }
 }
 
 class DashboardViewModelFactory(

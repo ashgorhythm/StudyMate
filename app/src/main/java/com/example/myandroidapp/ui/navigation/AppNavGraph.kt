@@ -15,7 +15,6 @@ import com.example.myandroidapp.ui.screens.dashboard.DashboardViewModel
 import com.example.myandroidapp.ui.screens.dashboard.DashboardViewModelFactory
 import com.example.myandroidapp.ui.screens.focus.FocusScreen
 import com.example.myandroidapp.ui.screens.focus.FocusViewModel
-import com.example.myandroidapp.ui.screens.focus.FocusViewModelFactory
 import com.example.myandroidapp.ui.screens.library.LibraryScreen
 import com.example.myandroidapp.ui.screens.library.LibraryViewModel
 import com.example.myandroidapp.ui.screens.library.LibraryViewModelFactory
@@ -26,7 +25,9 @@ import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    repository: StudyRepository
+    repository: StudyRepository,
+    // FocusViewModel hoisted to allow nav bar to read its state
+    focusViewModel: FocusViewModel
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as StudentCompanionApp
@@ -43,8 +44,8 @@ fun AppNavGraph(
             )
         }
         composable(Screen.Focus.route) {
-            val vm: FocusViewModel = viewModel(factory = FocusViewModelFactory(repository))
-            FocusScreen(viewModel = vm)
+            // Use the hoisted vm — same instance shared with MainActivity
+            FocusScreen(viewModel = focusViewModel)
         }
         composable(Screen.Library.route) {
             val vm: LibraryViewModel = viewModel(factory = LibraryViewModelFactory(repository))

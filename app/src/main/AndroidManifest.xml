@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Internet: Required for Gemini AI API calls -->
+    <!-- Internet: Required for Gemini AI API calls and ambient sounds -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Focus Mode: DND and notification management -->
@@ -13,6 +13,16 @@
 
     <!-- Contacts: Read contacts for allowed contacts in Focus Mode -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Notifications: Task reminders (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Alarms: Schedule exact task reminder alarms -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Wake lock: Keep alarm reliable -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".StudentCompanionApp"
@@ -32,6 +42,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Task Reminder BroadcastReceiver -->
+        <receiver
+            android:name=".service.TaskReminderReceiver"
+            android:exported="false" />
 
     </application>
 

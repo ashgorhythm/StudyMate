@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,197 +18,132 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.myandroidapp.data.model.AllowedContact
+import com.example.myandroidapp.data.model.Subject
 import com.example.myandroidapp.ui.theme.*
 
+/**
+ * Dialog to manage allowed contacts during focus mode.
+ * Uses real contact picker via [onPickContact].
+ */
 @Composable
 fun AllowedContactsDialog(
     allowedContacts: List<AllowedContact>,
     onDismiss: () -> Unit,
-    onAddContact: () -> Unit,
+    onPickContact: () -> Unit, // Opens system contact picker
     onRemoveContact: (AllowedContact) -> Unit
 ) {
-    Dialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.7f)
-                .padding(horizontal = 20.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = NavyMedium),
-            border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.2f))
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                // ── Header ──
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            "Allowed Contacts",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "These contacts can reach you during Focus Mode",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Close", tint = TextSecondary)
-                    }
-                }
+        containerColor = NavyMedium,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ContactPhone, null, tint = TealPrimary, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Allowed Contacts", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    "These contacts can call you via DND priority mode while focus is active.",
+                    color = TextSecondary, fontSize = 13.sp, lineHeight = 18.sp
+                )
                 Spacer(Modifier.height(16.dp))
 
-                // ── Contact List ──
                 if (allowedContacts.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    Box(
+                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(TealPrimary.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Outlined.PersonOff,
-                                null,
-                                tint = TealPrimary,
-                                modifier = Modifier.size(32.dp)
-                            )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                Modifier.size(60.dp).clip(CircleShape).background(TealPrimary.copy(0.1f)),
+                                Alignment.Center
+                            ) {
+                                Icon(Icons.Default.PersonOff, null, tint = TealPrimary, modifier = Modifier.size(32.dp))
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text("No contacts added", color = TextMuted, fontSize = 14.sp)
+                            Text("All calls silenced during focus", color = TextMuted, fontSize = 12.sp)
                         }
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "No allowed contacts",
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "All calls will be silenced during\nFocus Mode",
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(allowedContacts) { contact ->
-                            AllowedContactItem(
-                                contact = contact,
-                                onRemove = { onRemoveContact(contact) }
-                            )
+                        items(allowedContacts, key = { it.phoneNumber }) { contact ->
+                            AllowedContactItem(contact = contact, onRemove = { onRemoveContact(contact) })
                         }
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
-
-                // ── Add Contact Button ──
+                Spacer(Modifier.height(12.dp))
                 Button(
-                    onClick = onAddContact,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = TealPrimary.copy(alpha = 0.15f),
-                        contentColor = TealPrimary
-                    ),
-                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.3f))
+                    onClick = { onDismiss(); onPickContact() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(TealPrimary, NavyDark),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.PersonAdd, null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.PersonAdd, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Add Contact", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("Add from Contacts", fontWeight = FontWeight.Bold)
                 }
             }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done", color = TealPrimary, fontWeight = FontWeight.Bold)
+            }
         }
-    }
+    )
 }
 
 @Composable
-private fun AllowedContactItem(
-    contact: AllowedContact,
-    onRemove: () -> Unit
-) {
+private fun AllowedContactItem(contact: AllowedContact, onRemove: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
         border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.1f))
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Avatar
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(
-                        listOf(TealPrimary, PurpleAccent, AmberAccent, PinkAccent, GreenSuccess)
-                            .random().copy(alpha = 0.2f)
-                    ),
+                Modifier.size(40.dp).clip(CircleShape).background(TealPrimary.copy(0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     contact.name.take(1).uppercase(),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = TealPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    contact.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    contact.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    contact.phoneNumber,
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
+                Text(contact.phoneNumber, fontSize = 12.sp, color = TextMuted)
             }
-            IconButton(onClick = onRemove) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
                 Icon(
-                    Icons.Default.RemoveCircleOutline,
-                    "Remove",
-                    tint = RedError.copy(alpha = 0.7f),
-                    modifier = Modifier.size(22.dp)
+                    Icons.Default.Close, "Remove", tint = RedError,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
     }
 }
 
+/**
+ * Card showing DND toggle and Allowed Contacts settings.
+ */
 @Composable
 fun FocusSettingsCard(
     isDndEnabled: Boolean,
@@ -221,103 +155,152 @@ fun FocusSettingsCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceCard),
         border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.1f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                "Focus Settings",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
-            )
-            Spacer(Modifier.height(12.dp))
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Focus Settings", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            HorizontalDivider(color = TextMuted.copy(0.15f))
 
             // DND Toggle
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.DoNotDisturb,
-                    null,
-                    tint = PurpleAccent,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Do Not Disturb",
-                        fontSize = 14.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (hasDndPermission) Icons.Default.DoNotDisturb else Icons.Default.DoNotDisturbOff,
+                        null,
+                        tint = if (hasDndPermission) TealPrimary else TextMuted,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        if (hasDndPermission) "Silence notifications during focus"
-                        else "Permission required — tap to grant",
-                        fontSize = 11.sp,
-                        color = if (hasDndPermission) TextSecondary else AmberAccent
-                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Do Not Disturb", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (hasDndPermission) "Silence notifications during focus" else "Tap to grant permission",
+                            color = if (hasDndPermission) TextSecondary else AmberAccent,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
                 if (hasDndPermission) {
                     Switch(
                         checked = isDndEnabled,
                         onCheckedChange = onToggleDnd,
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = TealPrimary,
-                            checkedTrackColor = TealPrimary.copy(alpha = 0.3f),
-                            uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = NavyLight
+                            checkedThumbColor = NavyDark, checkedTrackColor = TealPrimary
                         )
                     )
                 } else {
                     TextButton(onClick = onRequestDndPermission) {
-                        Text("Grant", color = TealPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Grant", color = TealPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = TextMuted.copy(alpha = 0.15f))
-            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = TextMuted.copy(0.1f))
 
-            // Allowed Contacts
+            // Allowed Contacts row
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onManageContacts() }
-                    .padding(vertical = 4.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onManageContacts() }.padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.ContactPhone,
-                    null,
-                    tint = GreenSuccess,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Allowed Contacts",
-                        fontSize = 14.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        "$allowedContactsCount contacts can reach you",
-                        fontSize = 11.sp,
-                        color = TextSecondary
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ContactPhone, null, tint = PurpleAccent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Allowed Contacts", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (allowedContactsCount == 0) "No contacts — all calls silenced"
+                            else "$allowedContactsCount contact${if (allowedContactsCount > 1) "s" else ""} can reach you",
+                            color = TextSecondary, fontSize = 11.sp
+                        )
+                    }
                 }
-                Icon(
-                    Icons.Default.ChevronRight,
-                    "Manage",
-                    tint = TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (allowedContactsCount > 0) {
+                        Box(
+                            Modifier.size(22.dp).clip(CircleShape).background(PurpleAccent.copy(0.2f)),
+                            Alignment.Center
+                        ) {
+                            Text("$allowedContactsCount", color = PurpleAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
+}
+
+/**
+ * Dialog for picking the study subject for a focus session.
+ */
+@Composable
+fun SubjectPickerDialog(
+    subjects: List<Subject>,
+    currentSubject: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NavyMedium,
+        titleContentColor = TextPrimary,
+        title = { Text("Select Subject", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        text = {
+            Column {
+                if (subjects.isEmpty()) {
+                    Text(
+                        "No subjects added yet.\nAdd subjects from the Dashboard tab.",
+                        color = TextSecondary, fontSize = 14.sp
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        subjects.forEach { subject ->
+                            val isSelected = currentSubject == subject.name
+                            val color = try {
+                                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(subject.colorHex))
+                            } catch (e: Exception) { TealPrimary }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth().clickable { onSelect(subject.name) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) color.copy(alpha = 0.15f) else SurfaceCard
+                                ),
+                                border = if (isSelected) BorderStroke(1.dp, color.copy(alpha = 0.5f)) else null
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(subject.icon, fontSize = 18.sp) }
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        subject.name, color = TextPrimary,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 15.sp, modifier = Modifier.weight(1f)
+                                    )
+                                    if (isSelected) {
+                                        Icon(Icons.Default.CheckCircle, null, tint = color, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = TealPrimary)) {
+                Text("Done", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }

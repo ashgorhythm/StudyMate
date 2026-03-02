@@ -59,12 +59,18 @@ class BackupService(
 
     /**
      * Writes exported JSON to a URI (chosen via SAF — could be Google Drive, local, etc.)
+     * Uses "w" (write) mode which is compatible with Google Drive and other cloud storage providers.
      */
     suspend fun exportToUri(context: Context, uri: Uri): Result<Int> {
         return try {
             val json = exportToJson(context)
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                outputStream.write(json.toByteArray(Charsets.UTF_8))
+            // "w" (write/truncate) mode — required for Google Drive SAF provider
+            // Default mode "" can fail on Drive; explicitly "w" ensures compatibility
+            val outputStream = context.contentResolver.openOutputStream(uri, "w")
+                ?: return Result.failure(Exception("Could not open output stream for URI.\nMake sure you have permission to write to this location."))
+            outputStream.use { stream ->
+                stream.write(json.toByteArray(Charsets.UTF_8))
+                stream.flush()
             }
             val root = JSONObject(json)
             val total = root.getJSONArray("tasks").length() +
@@ -72,8 +78,10 @@ class BackupService(
                     root.getJSONArray("sessions").length() +
                     root.getJSONArray("files").length()
             Result.success(total)
+        } catch (e: SecurityException) {
+            Result.failure(Exception("Permission denied. Please select a writable location.", e))
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception("Export failed: ${e.message ?: e.javaClass.simpleName}", e))
         }
     }
 
