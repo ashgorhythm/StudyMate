@@ -18,6 +18,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -453,8 +455,11 @@ private fun OnboardingPageContent(
         Spacer(Modifier.height(24.dp))
 
         // ── Feature Pills ──
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
             page.features.forEach { (emoji, label) ->
                 Card(
@@ -502,8 +507,7 @@ private fun OnboardingPageContent(
                     )
                 },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PinkAccent,
@@ -683,7 +687,11 @@ private fun TabletOnboardingPageContent(
             Spacer(Modifier.height(28.dp))
 
             // Feature pills
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 page.features.forEach { (emoji, label) ->
                     Card(
                         shape = RoundedCornerShape(14.dp),

@@ -151,10 +151,11 @@ fun FocusScreen(viewModel: FocusViewModel) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent
-    ) { _ ->
+    ) { contentPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(contentPadding)
                 .background(Brush.verticalGradient(colors = listOf(NavyDark, Color(0xFF050714)))),
             contentAlignment = Alignment.TopCenter
         ) {
@@ -543,10 +544,14 @@ private fun TimerRing(seconds: Int, totalSeconds: Int, isRunning: Boolean) {
 
 @Composable
 private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         OutlinedButton(
             onClick = onReset,
-            modifier = Modifier.height(52.dp).width(120.dp),
+            modifier = Modifier.height(52.dp).weight(2f),
             shape = RoundedCornerShape(26.dp),
             border = BorderStroke(1.dp, TextMuted),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
@@ -557,7 +562,7 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
         }
         Button(
             onClick = onToggle,
-            modifier = Modifier.height(52.dp).width(160.dp),
+            modifier = Modifier.height(52.dp).weight(3f),
             shape = RoundedCornerShape(26.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isRunning) AmberAccent else TealPrimary,
@@ -584,6 +589,8 @@ private fun DurationSelector(
     Column {
         Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(10.dp))
+
+        // ── Preset duration chips ──
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -608,35 +615,37 @@ private fun DurationSelector(
                     )
                 )
             }
-            // Custom chip
-            val isCustom = selected == 0
-            FilterChip(
-                selected = isCustom,
-                onClick = { if (!isRunning) onCustom() },
-                label = {
-                    Text(
-                        if (isCustom) {
-                            val h = customMinutes / 60; val m = customMinutes % 60
-                            if (h > 0) "${h}h${m}m" else "${m}m"
-                        } else "Custom",
-                        fontWeight = FontWeight.Medium, fontSize = 12.sp
-                    )
-                },
-                enabled = !isRunning,
-                modifier = Modifier.weight(1f),
-                leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(14.dp)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = PurpleAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = PurpleAccent,
-                    containerColor = SurfaceCard,
-                    labelColor = TextSecondary
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    selectedBorderColor = PurpleAccent, borderColor = Color.Transparent,
-                    enabled = !isRunning, selected = isCustom
-                )
-            )
         }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // ── Custom duration chip (separate row) ──
+        val isCustom = selected == 0
+        FilterChip(
+            selected = isCustom,
+            onClick = { if (!isRunning) onCustom() },
+            label = {
+                Text(
+                    if (isCustom) {
+                        val h = customMinutes / 60; val m = customMinutes % 60
+                        if (h > 0) "${h}h ${m}m" else "${m}m"
+                    } else "Custom timer",
+                    fontWeight = FontWeight.Medium, fontSize = 13.sp
+                )
+            },
+            enabled = !isRunning,
+            modifier = Modifier.fillMaxWidth(),
+            leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = PurpleAccent.copy(alpha = 0.2f),
+                selectedLabelColor = PurpleAccent,
+                containerColor = SurfaceCard,
+                labelColor = TextSecondary
+            ),
+            border = FilterChipDefaults.filterChipBorder(
+                selectedBorderColor = PurpleAccent, borderColor = Color.Transparent,
+                enabled = !isRunning, selected = isCustom
+            )
+        )
     }
 }
 

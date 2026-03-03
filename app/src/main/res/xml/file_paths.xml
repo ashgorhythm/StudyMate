@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Documents/StudyBuddy folder -->
+    <external-path
+        name="documents"
+        path="Documents/StudyBuddy/" />
+
+    <!-- Fallback: full external storage -->
+    <external-path
+        name="external"
+        path="." />
+</paths>
+

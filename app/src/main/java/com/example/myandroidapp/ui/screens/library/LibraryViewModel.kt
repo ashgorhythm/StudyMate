@@ -1,21 +1,26 @@
 package com.example.myandroidapp.ui.screens.library
 
 import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myandroidapp.data.model.StudyFile
 import com.example.myandroidapp.data.repository.StudyRepository
+import com.example.myandroidapp.util.ScannedFile
+import com.example.myandroidapp.util.StudyBuddyFolder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 data class LibraryUiState(
-    val files: List<StudyFile> = emptyList(),
+    val files: List<ScannedFile> = emptyList(),
+    val allFiles: List<ScannedFile> = emptyList(),
     val selectedCategory: String = "All",
     val searchQuery: String = "",
-    val isGridView: Boolean = true
+    val isGridView: Boolean = true,
+    val folderPath: String = "",
+    val isLoading: Boolean = false
 )
 
 class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
@@ -23,46 +28,42 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
-    init {
-        loadFiles()
+    /**
+     * Initialize the StudyBuddy folder and scan its files.
+     */
+    fun initFolder(context: Context) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val folder = withContext(Dispatchers.IO) { StudyBuddyFolder.getOrCreate(context) }
+            _uiState.update { it.copy(folderPath = folder.absolutePath) }
+            refreshFiles(context)
+        }
     }
 
-    private fun loadFiles() {
+    /**
+     * Rescan the StudyBuddy folder for file changes.
+     */
+    fun refreshFiles(context: Context) {
         viewModelScope.launch {
-            repository.allFiles.collect { files ->
-                _uiState.update { it.copy(files = files) }
+            val scanned = withContext(Dispatchers.IO) { StudyBuddyFolder.scanFiles(context) }
+            _uiState.update { state ->
+                val filtered = applyFilters(scanned, state.selectedCategory, state.searchQuery)
+                state.copy(allFiles = scanned, files = filtered, isLoading = false)
             }
         }
     }
 
     fun setCategory(category: String) {
-        _uiState.update { it.copy(selectedCategory = category) }
-        viewModelScope.launch {
-            val typeForQuery = when (category) {
-                "PDFs" -> "PDF"
-                "Notes" -> "NOTE"
-                "Images" -> "IMAGE"
-                "Videos" -> "VIDEO"
-                else -> null
-            }
-            val flow = if (typeForQuery == null) repository.allFiles
-            else repository.getFilesByType(typeForQuery)
-            flow.collect { files ->
-                _uiState.update { it.copy(files = files) }
-            }
+        _uiState.update { state ->
+            val filtered = applyFilters(state.allFiles, category, state.searchQuery)
+            state.copy(selectedCategory = category, files = filtered)
         }
     }
 
     fun setSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
-        if (query.isNotBlank()) {
-            viewModelScope.launch {
-                repository.searchFiles(query).collect { files ->
-                    _uiState.update { it.copy(files = files) }
-                }
-            }
-        } else {
-            loadFiles()
+        _uiState.update { state ->
+            val filtered = applyFilters(state.allFiles, state.selectedCategory, query)
+            state.copy(searchQuery = query, files = filtered)
         }
     }
 
@@ -70,70 +71,58 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
         _uiState.update { it.copy(isGridView = !it.isGridView) }
     }
 
-    fun toggleFavorite(fileId: Long, currentFav: Boolean) {
+    /**
+     * Delete a file from disk and refresh the list.
+     */
+    fun deleteFile(context: Context, file: ScannedFile) {
         viewModelScope.launch {
-            repository.toggleFileFavorite(fileId, !currentFav)
-        }
-    }
-
-    fun deleteFile(file: StudyFile) {
-        viewModelScope.launch {
-            repository.deleteFile(file)
+            withContext(Dispatchers.IO) {
+                StudyBuddyFolder.deleteFile(File(file.absolutePath))
+            }
+            refreshFiles(context)
         }
     }
 
     /**
-     * Process a file selected via SAF (Storage Access Framework).
-     * Extracts file metadata from the content URI and stores it in the database.
+     * Rename a file on disk and refresh the list.
      */
-    fun processPickedFile(context: Context, uri: Uri) {
+    fun renameFile(context: Context, file: ScannedFile, newName: String) {
         viewModelScope.launch {
-            val contentResolver = context.contentResolver
-
-            var fileName = "Unknown File"
-            var fileSize = 0L
-
-            // Query the content resolver for file metadata
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (nameIndex >= 0) fileName = cursor.getString(nameIndex) ?: "Unknown File"
-                    if (sizeIndex >= 0) fileSize = cursor.getLong(sizeIndex)
-                }
+            withContext(Dispatchers.IO) {
+                StudyBuddyFolder.renameFile(File(file.absolutePath), newName)
             }
-
-            // Determine file type from extension
-            val extension = fileName.substringAfterLast('.', "").lowercase()
-            val fileType = when (extension) {
-                "pdf" -> "PDF"
-                "doc", "docx", "txt", "md", "rtf" -> "NOTE"
-                "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg" -> "IMAGE"
-                "mp4", "avi", "mkv", "mov", "webm" -> "VIDEO"
-                else -> "NOTE"
-            }
-
-            // Take persistent URI permission so the file can be accessed later
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: SecurityException) {
-                // Some providers don't support persistent permissions
-            }
-
-            val studyFile = StudyFile(
-                fileName = fileName,
-                filePath = uri.toString(),
-                fileType = fileType,
-                subject = "",
-                fileSize = fileSize
-            )
-            repository.insertFile(studyFile)
+            refreshFiles(context)
         }
     }
 
+    private fun applyFilters(
+        files: List<ScannedFile>,
+        category: String,
+        query: String
+    ): List<ScannedFile> {
+        var result = files
+        // Category filter
+        if (category != "All") {
+            val type = when (category) {
+                "PDFs" -> "PDF"
+                "Notes" -> "NOTE"
+                "Images" -> "IMAGE"
+                "Videos" -> "VIDEO"
+                else -> null
+            }
+            if (type != null) {
+                result = result.filter { it.type == type }
+            }
+        }
+        // Search filter
+        if (query.isNotBlank()) {
+            val q = query.lowercase()
+            result = result.filter {
+                it.name.lowercase().contains(q) || it.subfolder.lowercase().contains(q)
+            }
+        }
+        return result
+    }
 }
 
 class LibraryViewModelFactory(private val repository: StudyRepository) : ViewModelProvider.Factory {

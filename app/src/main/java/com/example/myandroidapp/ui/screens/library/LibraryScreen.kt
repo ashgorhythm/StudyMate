@@ -1,19 +1,16 @@
 package com.example.myandroidapp.ui.screens.library
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,11 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.myandroidapp.data.model.StudyFile
 import com.example.myandroidapp.ui.screens.library.viewer.FileViewerScreen
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
+import com.example.myandroidapp.util.ScannedFile
+import java.io.File
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,23 +38,87 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // In-app file viewer state
-    var viewingFile by remember { mutableStateOf<StudyFile?>(null) }
+    // Initialize folder on first composition
+    LaunchedEffect(Unit) { viewModel.initFolder(context) }
 
-    // Show in-app file viewer if a file is being viewed
+    // In-app file viewer state
+    var viewingFile by remember { mutableStateOf<ScannedFile?>(null) }
+
+    // Show in-app file viewer
     viewingFile?.let { file ->
         FileViewerScreen(
-            file = file,
+            scannedFile = file,
             onDismiss = { viewingFile = null }
         )
         return
     }
 
-    // SAF File Picker launcher
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let { viewModel.processPickedFile(context, it) }
+    // Rename dialog state
+    var renamingFile by remember { mutableStateOf<ScannedFile?>(null) }
+    var renameText by remember { mutableStateOf("") }
+
+    if (renamingFile != null) {
+        AlertDialog(
+            onDismissRequest = { renamingFile = null },
+            containerColor = NavyMedium,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("Rename File", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    placeholder = { Text("New file name", color = TextMuted) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TealPrimary, unfocusedBorderColor = TextMuted.copy(0.3f),
+                        focusedContainerColor = NavyDark, unfocusedContainerColor = NavyDark,
+                        cursorColor = TealPrimary, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val file = renamingFile ?: return@TextButton
+                    val newName = renameText.trim()
+                    if (newName.isNotBlank() && newName != file.name) {
+                        viewModel.renameFile(context, file, newName)
+                    }
+                    renamingFile = null
+                }) { Text("Rename", color = TealPrimary, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renamingFile = null }) { Text("Cancel", color = TextMuted) }
+            }
+        )
+    }
+
+    // Delete confirmation state
+    var deletingFile by remember { mutableStateOf<ScannedFile?>(null) }
+
+    if (deletingFile != null) {
+        AlertDialog(
+            onDismissRequest = { deletingFile = null },
+            containerColor = NavyMedium,
+            shape = RoundedCornerShape(20.dp),
+            title = { Text("Delete File?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "\"${deletingFile?.name}\" will be permanently deleted from your device.",
+                    color = TextSecondary, fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingFile?.let { viewModel.deleteFile(context, it) }
+                    deletingFile = null
+                }) { Text("Delete", color = RedError, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingFile = null }) { Text("Cancel", color = TextMuted) }
+            }
+        )
     }
 
     val adaptive = rememberAdaptiveInfo()
@@ -78,16 +142,41 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
             ) {
                 Text("My Library", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Row {
+                    IconButton(onClick = { viewModel.refreshFiles(context) }) {
+                        Icon(Icons.Default.Refresh, "Refresh", tint = TextSecondary)
+                    }
                     IconButton(onClick = { viewModel.toggleViewMode() }) {
                         Icon(
-                            if (uiState.isGridView) Icons.Default.ViewList else Icons.Default.GridView,
+                            if (uiState.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
                             "Toggle View",
                             tint = TextSecondary
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+
+            // ── Folder Path Info ──
+            if (uiState.folderPath.isNotBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = TealPrimary.copy(0.08f)),
+                    border = BorderStroke(1.dp, TealPrimary.copy(0.15f))
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Folder, null, tint = TealPrimary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Documents/StudyBuddy",
+                            fontSize = 12.sp, color = TealPrimary, fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
 
             // ── Search Bar ──
             OutlinedTextField(
@@ -130,19 +219,20 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     )
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
             // ── File Count ──
-            Text(
-                "${uiState.files.size} files",
-                fontSize = 12.sp,
-                color = TextMuted,
-                fontWeight = FontWeight.Medium
-            )
+            Text("${uiState.files.size} files", fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(8.dp))
 
-            // ── Files Grid/List ──
-            if (uiState.files.isEmpty()) {
+            // ── Loading ──
+            if (uiState.isLoading) {
+                Box(Modifier.fillMaxWidth().weight(1f), Alignment.Center) {
+                    CircularProgressIndicator(color = TealPrimary)
+                }
+            }
+            // ── Empty State ──
+            else if (uiState.files.isEmpty()) {
                 Column(
                     Modifier.fillMaxWidth().weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -152,19 +242,29 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     Spacer(Modifier.height(12.dp))
                     Text("No files yet", color = TextPrimary, fontSize = 16.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text("Tap + to upload your first file", color = TextSecondary, fontSize = 13.sp)
+                    Text(
+                        "Place files in Documents/StudyBuddy",
+                        color = TextSecondary, fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Use sub-folders: PDFs, Notes, Images, Videos",
+                        color = TextMuted, fontSize = 11.sp
+                    )
                     Spacer(Modifier.height(20.dp))
-                    Button(
-                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                        colors = ButtonDefaults.buttonColors(TealPrimary, NavyDark),
+                    OutlinedButton(
+                        onClick = { viewModel.refreshFiles(context) },
+                        border = BorderStroke(1.dp, TealPrimary.copy(0.5f)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Upload, null, Modifier.size(18.dp))
+                        Icon(Icons.Default.Refresh, null, Modifier.size(18.dp), tint = TealPrimary)
                         Spacer(Modifier.width(6.dp))
-                        Text("Upload File", fontWeight = FontWeight.Bold)
+                        Text("Scan Again", color = TealPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
-            } else {
+            }
+            // ── Files Grid/List ──
+            else {
                 if (uiState.isGridView) {
                     LazyVerticalGrid(
                         GridCells.Fixed(adaptive.gridColumns),
@@ -175,9 +275,10 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         items(uiState.files) { file ->
                             FileCard(
                                 file = file,
-                                onFav = { viewModel.toggleFavorite(file.id, file.isFavorite) },
-                                onDelete = { viewModel.deleteFile(file) },
-                                onOpen = { viewingFile = file }
+                                onOpen = { viewingFile = file },
+                                onRename = { renamingFile = file; renameText = file.name },
+                                onDelete = { deletingFile = file },
+                                onOpenExternal = { openFileExternally(context, file) }
                             )
                         }
                     }
@@ -190,76 +291,70 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                         items(uiState.files) { file ->
                             FileListItem(
                                 file = file,
-                                onFav = { viewModel.toggleFavorite(file.id, file.isFavorite) },
-                                onDelete = { viewModel.deleteFile(file) },
-                                onOpen = { viewingFile = file }
+                                onOpen = { viewingFile = file },
+                                onRename = { renamingFile = file; renameText = file.name },
+                                onDelete = { deletingFile = file },
+                                onOpenExternal = { openFileExternally(context, file) }
                             )
                         }
                     }
                 }
             }
         }
-
-        // ── FAB - Real File Picker ──
-        FloatingActionButton(
-            onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 12.dp),
-            containerColor = TealPrimary,
-            contentColor = NavyDark,
-            shape = CircleShape
-        ) {
-            Icon(Icons.Default.Upload, "Upload File")
-        }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit, onOpen: () -> Unit) {
-    val tc = when (file.fileType.uppercase()) {
-        "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
-    }
-    val ti = when (file.fileType.uppercase()) {
-        "PDF" -> Icons.Default.PictureAsPdf; "NOTE" -> Icons.Default.Description
-        "IMAGE" -> Icons.Default.Image; "VIDEO" -> Icons.Default.VideoFile; else -> Icons.Default.InsertDriveFile
-    }
+// ═══════════════════════════════════════════════════════
+// ── Open file externally with FileProvider ──
+// ═══════════════════════════════════════════════════════
 
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else false
+private fun openFileExternally(context: android.content.Context, file: ScannedFile) {
+    try {
+        val javaFile = File(file.absolutePath)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", javaFile)
+        val mimeType = when (file.type) {
+            "PDF" -> "application/pdf"
+            "IMAGE" -> "image/*"
+            "VIDEO" -> "video/*"
+            "NOTE" -> "text/*"
+            else -> "*/*"
         }
-    )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
+    }
+}
 
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(RedError.copy(alpha = 0.3f))
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(Icons.Default.Delete, "Delete", tint = RedError)
-            }
-        },
-        enableDismissFromStartToEnd = false
+// ═══════════════════════════════════════════════════════
+// ── File Card (Grid View) ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun FileCard(
+    file: ScannedFile,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onOpenExternal: () -> Unit
+) {
+    val tc = fileColor(file.type)
+    val ti = fileIcon(file.type)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(SurfaceCard),
+        border = BorderStroke(1.dp, tc.copy(0.15f))
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpen() },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(SurfaceCard),
-            border = BorderStroke(1.dp, tc.copy(0.15f))
-        ) {
-            Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            // Top: icon area + 3-dot menu
+            Box(Modifier.fillMaxWidth()) {
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -270,115 +365,146 @@ private fun FileCard(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit, o
                 ) {
                     Icon(ti, null, tint = tc, modifier = Modifier.size(36.dp))
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    file.fileName, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-                    color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis
+                // 3-dot menu
+                FileOptionsMenu(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    onRename = onRename,
+                    onDelete = onDelete,
+                    onOpenExternal = onOpenExternal
                 )
-                if (file.subject.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(file.subject, fontSize = 10.sp, color = TextSecondary)
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(formatFileSize(file.fileSize), fontSize = 10.sp, color = TextMuted)
-                    IconButton(onFav, Modifier.size(24.dp)) {
-                        Icon(
-                            if (file.isFavorite) Icons.Default.Star else Icons.Outlined.StarBorder, "Fav",
-                            tint = if (file.isFavorite) AmberAccent else TextMuted, modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+            if (file.subfolder.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(file.subfolder, fontSize = 10.sp, color = TextSecondary)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(formatFileSize(file.size), fontSize = 10.sp, color = TextMuted)
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+// ═══════════════════════════════════════════════════════
+// ── File List Item (List View) ──
+// ═══════════════════════════════════════════════════════
+
 @Composable
-private fun FileListItem(file: StudyFile, onFav: () -> Unit, onDelete: () -> Unit, onOpen: () -> Unit) {
-    val tc = when (file.fileType.uppercase()) {
-        "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
-    }
-    val ti = when (file.fileType.uppercase()) {
-        "PDF" -> Icons.Default.PictureAsPdf; "NOTE" -> Icons.Default.Description
-        "IMAGE" -> Icons.Default.Image; "VIDEO" -> Icons.Default.VideoFile; else -> Icons.Default.InsertDriveFile
-    }
+private fun FileListItem(
+    file: ScannedFile,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onOpenExternal: () -> Unit
+) {
+    val tc = fileColor(file.type)
+    val ti = fileIcon(file.type)
 
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else false
-        }
-    )
-
-    SwipeToDismissBox(
-        state = dismissState,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(RedError.copy(alpha = 0.3f))
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(Icons.Default.Delete, "Delete", tint = RedError)
-            }
-        },
-        enableDismissFromStartToEnd = false
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpen() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(SurfaceCard),
+        border = BorderStroke(1.dp, tc.copy(0.1f))
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpen() },
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(SurfaceCard),
-            border = BorderStroke(1.dp, tc.copy(0.1f))
+        Row(
+            Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
+                Alignment.Center
             ) {
-                Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
-                    Alignment.Center
-                ) {
-                    Icon(ti, null, tint = tc, modifier = Modifier.size(24.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(file.fileName, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(file.fileType, fontSize = 10.sp, color = tc, fontWeight = FontWeight.SemiBold)
-                        if (file.subject.isNotBlank()) {
-                            Text(" • ${file.subject}", fontSize = 10.sp, color = TextSecondary)
-                        }
-                        Text(" • ${formatFileSize(file.fileSize)}", fontSize = 10.sp, color = TextMuted)
+                Icon(ti, null, tint = tc, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(file.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(file.type, fontSize = 10.sp, color = tc, fontWeight = FontWeight.SemiBold)
+                    if (file.subfolder.isNotBlank()) {
+                        Text(" • ${file.subfolder}", fontSize = 10.sp, color = TextSecondary)
                     }
-                }
-                IconButton(onFav, Modifier.size(32.dp)) {
-                    Icon(
-                        if (file.isFavorite) Icons.Default.Star else Icons.Outlined.StarBorder, "Fav",
-                        tint = if (file.isFavorite) AmberAccent else TextMuted, modifier = Modifier.size(18.dp)
-                    )
+                    Text(" • ${formatFileSize(file.size)}", fontSize = 10.sp, color = TextMuted)
                 }
             }
+            // 3-dot menu
+            FileOptionsMenu(
+                modifier = Modifier,
+                onRename = onRename,
+                onDelete = onDelete,
+                onOpenExternal = onOpenExternal
+            )
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── 3-Dot Options Menu ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun FileOptionsMenu(
+    modifier: Modifier = Modifier,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onOpenExternal: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier) {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = NavyMedium,
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            DropdownMenuItem(
+                text = { Text("Open with…", fontSize = 14.sp, color = TextPrimary) },
+                onClick = { expanded = false; onOpenExternal() },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = TealPrimary, modifier = Modifier.size(18.dp)) }
+            )
+            DropdownMenuItem(
+                text = { Text("Rename", fontSize = 14.sp, color = TextPrimary) },
+                onClick = { expanded = false; onRename() },
+                leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, null, tint = PurpleAccent, modifier = Modifier.size(18.dp)) }
+            )
+            HorizontalDivider(color = TextMuted.copy(0.15f), modifier = Modifier.padding(horizontal = 12.dp))
+            DropdownMenuItem(
+                text = { Text("Delete", fontSize = 14.sp, color = RedError) },
+                onClick = { expanded = false; onDelete() },
+                leadingIcon = { Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.size(18.dp)) }
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Helpers ──
+// ═══════════════════════════════════════════════════════
+
+private fun fileColor(type: String): Color = when (type) {
+    "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
+}
+
+@Composable
+private fun fileIcon(type: String) = when (type) {
+    "PDF" -> Icons.Default.PictureAsPdf; "NOTE" -> Icons.Default.Description
+    "IMAGE" -> Icons.Default.Image; "VIDEO" -> Icons.Default.VideoFile; else -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 
 private fun formatFileSize(bytes: Long): String {
     return when {
-        bytes >= 1_000_000_000 -> String.format("%.1f GB", bytes / 1e9)
-        bytes >= 1_000_000 -> String.format("%.1f MB", bytes / 1e6)
-        bytes >= 1_000 -> String.format("%.0f KB", bytes / 1e3)
+        bytes >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", bytes / 1e9)
+        bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1e6)
+        bytes >= 1_000 -> String.format(Locale.US, "%.0f KB", bytes / 1e3)
         else -> "$bytes B"
     }
 }

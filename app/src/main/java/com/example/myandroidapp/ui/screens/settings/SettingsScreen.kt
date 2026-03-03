@@ -2,7 +2,6 @@ package com.example.myandroidapp.ui.screens.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,7 +18,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,7 +34,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
 
-    // SAF launchers — save to Google Drive / local
+    // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(BackupService.BACKUP_MIME_TYPE)
     ) { uri ->
@@ -49,13 +47,14 @@ fun SettingsScreen(
         uri?.let { viewModel.importFromUri(it) }
     }
 
-    // Edit name dialog
+    // State
     var showNameDialog by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
-
-    // Import confirmation dialog
     var showImportConfirm by remember { mutableStateOf(false) }
+    var showDataBackup by remember { mutableStateOf(false) }
+    var showProfileOverlay by remember { mutableStateOf(false) }
 
+    // Dialogs
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
@@ -110,7 +109,7 @@ fun SettingsScreen(
         )
     }
 
-    // Success / error snackbar
+    // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.exportSuccess) {
         if (uiState.exportSuccess) {
@@ -134,12 +133,12 @@ fun SettingsScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent
-    ) { _ ->
+    ) { contentPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd))),
-            contentAlignment = Alignment.TopCenter
+                .padding(contentPadding)
+                .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd)))
         ) {
             Column(
                 modifier = Modifier
@@ -153,117 +152,375 @@ fun SettingsScreen(
                     .padding(horizontal = adaptive.horizontalPadding)
                     .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = 32.dp)
             ) {
-                // ── Header ──
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text("Settings", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-                Spacer(Modifier.height(24.dp))
+                if (showDataBackup) {
+                    // ═══════════════════════════════════════
+                    // ── Data & Backup Sub-screen ──
+                    // ═══════════════════════════════════════
+                    DataBackupSection(
+                        uiState = uiState,
+                        onBack = { showDataBackup = false },
+                        onExport = { exportLauncher.launch(BackupService.BACKUP_FILE_NAME) },
+                        onImport = { showImportConfirm = true }
+                    )
+                } else {
+                    // ═══════════════════════════════════════
+                    // ── Main Settings ──
+                    // ═══════════════════════════════════════
 
-                // ── Profile Card ──
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                    border = BorderStroke(1.dp, TealPrimary.copy(0.2f))
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // ── Header ──
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text("Settings", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Spacer(Modifier.height(24.dp))
+
+                    // ── Profile Card ──
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { showProfileOverlay = true },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                        border = BorderStroke(1.dp, TealPrimary.copy(0.2f))
                     ) {
-                        Box(
-                            Modifier.size(56.dp).clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(TealPrimary, PurpleAccent))),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            Modifier.fillMaxWidth().padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                uiState.studentName.take(1).uppercase(),
-                                fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White
-                            )
+                            Box(
+                                Modifier.size(56.dp).clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(TealPrimary, PurpleAccent))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    uiState.studentName.take(1).uppercase(),
+                                    fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White
+                                )
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(uiState.studentName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text("🔥 ${uiState.streak} day streak", fontSize = 13.sp, color = TextSecondary)
+                            }
+                            IconButton(onClick = { editName = uiState.studentName; showNameDialog = true }) {
+                                Icon(Icons.Default.Edit, "Edit Name", tint = TealPrimary)
+                            }
                         }
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(uiState.studentName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                            Text("🔥 ${uiState.streak} day streak", fontSize = 13.sp, color = TextSecondary)
-                        }
-                        IconButton(onClick = { editName = uiState.studentName; showNameDialog = true }) {
-                            Icon(Icons.Default.Edit, "Edit Name", tint = TealPrimary)
+                    }
+                    Spacer(Modifier.height(20.dp))
+
+                    // ── Data Summary ──
+                    Text("Your Data", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        DataStatChip("📋 ${uiState.totalTasks}", "Tasks", TealPrimary, Modifier.weight(1f))
+                        DataStatChip("📚 ${uiState.totalSubjects}", "Subjects", PurpleAccent, Modifier.weight(1f))
+                        DataStatChip("⏱️ ${uiState.totalSessions}", "Sessions", AmberAccent, Modifier.weight(1f))
+                        DataStatChip("📁 ${uiState.totalFiles}", "Files", PinkAccent, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(28.dp))
+
+                    // ═══════════════════════════════════════
+                    // ── Main Menu List ──
+                    // ═══════════════════════════════════════
+                    Text("Settings", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Spacer(Modifier.height(12.dp))
+
+                    SettingsMenuItem(
+                        title = "Interface & Personalization",
+                        icon = Icons.Default.Palette,
+                        accentColor = PurpleAccent,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "Sync & Data Backup",
+                        icon = Icons.Default.CloudSync,
+                        accentColor = TealPrimary,
+                        onClick = { showDataBackup = true }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "Security & Focus Modes",
+                        icon = Icons.Default.Lock,
+                        accentColor = AmberAccent,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "University Community",
+                        icon = Icons.Default.Groups,
+                        accentColor = PinkAccent,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "Academic Privacy & Policy",
+                        icon = Icons.Default.Policy,
+                        accentColor = TextSecondary,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "Feedback & Beta",
+                        icon = Icons.Default.Feedback,
+                        accentColor = GreenSuccess,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SettingsMenuItem(
+                        title = "Share Companion App",
+                        icon = Icons.Default.Share,
+                        accentColor = TealPrimary,
+                        onClick = { /* TODO */ }
+                    )
+                    Spacer(Modifier.height(28.dp))
+
+                    // ── About ──
+                    Text("About", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Spacer(Modifier.height(12.dp))
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        RoundedCornerShape(16.dp),
+                        CardDefaults.cardColors(SurfaceCard)
+                    ) {
+                        Column(Modifier.padding(20.dp)) {
+                            Text("StudyMate", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
+                            Text("v1.0.0 • AI-Powered Study Companion", fontSize = 13.sp, color = TextSecondary)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Your personal study companion with AI-powered learning, focus timer, file management, and smart analytics.", fontSize = 13.sp, color = TextMuted, lineHeight = 18.sp)
                         }
                     }
                 }
-                Spacer(Modifier.height(20.dp))
+            }
 
-                // ── Data Summary ──
-                Text("Your Data", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DataStatChip("📋 ${uiState.totalTasks}", "Tasks", TealPrimary, Modifier.weight(1f))
-                    DataStatChip("📚 ${uiState.totalSubjects}", "Subjects", PurpleAccent, Modifier.weight(1f))
-                    DataStatChip("⏱️ ${uiState.totalSessions}", "Sessions", AmberAccent, Modifier.weight(1f))
-                    DataStatChip("📁 ${uiState.totalFiles}", "Files", PinkAccent, Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(28.dp))
-
-                // ── Backup & Sync Section ──
-                Text("Backup & Sync", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Save your data to Google Drive and restore it anytime",
-                    fontSize = 13.sp, color = TextSecondary
+            // ═══════════════════════════════════════════
+            // ── Profile Card Overlay ──
+            // ═══════════════════════════════════════════
+            if (showProfileOverlay) {
+                ProfileCardOverlay(
+                    studentName = uiState.studentName,
+                    onDismiss = { showProfileOverlay = false },
+                    onManageProfile = {
+                        showProfileOverlay = false
+                        editName = uiState.studentName
+                        showNameDialog = true
+                    }
                 )
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Profile Card Overlay ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun ProfileCardOverlay(
+    studentName: String,
+    onDismiss: () -> Unit,
+    onManageProfile: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .clickable(enabled = false) { /* consume click */ },
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = NavyMedium),
+            border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.2f))
+        ) {
+            Column(
+                Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top row: X and gear
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onManageProfile, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Settings, "Settings", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // Avatar
+                Box(
+                    Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .border(
+                            BorderStroke(3.dp, Brush.linearGradient(listOf(TealPrimary, PurpleAccent))),
+                            CircleShape
+                        )
+                        .background(SurfaceCard),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
 
-                // Export Button
-                SettingsActionCard(
-                    title = "Backup to Google Drive",
-                    subtitle = "Export all data as JSON — save to Drive, OneDrive, or local storage",
-                    icon = Icons.Default.CloudUpload,
-                    accentColor = TealPrimary,
-                    isLoading = uiState.isExporting,
-                    onClick = {
-                        exportLauncher.launch(BackupService.BACKUP_FILE_NAME)
-                    }
+                Text(
+                    "Hi, $studentName!",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(20.dp))
 
-                // Import Button
-                SettingsActionCard(
-                    title = "Restore from Backup",
-                    subtitle = "Import a previously exported backup from Google Drive or storage",
-                    icon = Icons.Default.CloudDownload,
-                    accentColor = PurpleAccent,
-                    isLoading = uiState.isImporting,
-                    onClick = { showImportConfirm = true }
-                )
-                Spacer(Modifier.height(28.dp))
-
-                // ── How It Works ──
-                Text("How It Works", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Spacer(Modifier.height(12.dp))
-                HowItWorksCard()
-                Spacer(Modifier.height(28.dp))
-
-                // ── About ──
-                Text("About", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Spacer(Modifier.height(12.dp))
-                Card(
-                    Modifier.fillMaxWidth(),
-                    RoundedCornerShape(16.dp),
-                    CardDefaults.cardColors(SurfaceCard)
+                // Primary button
+                Button(
+                    onClick = onManageProfile,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NavyDark,
+                        contentColor = TextPrimary
+                    ),
+                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.3f))
                 ) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("StudyMate", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
-                        Text("v1.0.0 • AI-Powered Study Companion", fontSize = 13.sp, color = TextSecondary)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Your personal study companion with AI-powered learning, focus timer, file management, and smart analytics.", fontSize = 13.sp, color = TextMuted, lineHeight = 18.sp)
-                    }
+                    Text(
+                        "Manage your student profile",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Data & Backup Section ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun DataBackupSection(
+    uiState: SettingsUiState,
+    onBack: () -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
+    // Header
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Data & Backup", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+    Spacer(Modifier.height(24.dp))
+
+    // Cloud Backup
+    SettingsActionCard(
+        title = "Cloud Backup",
+        subtitle = "Sync and restore your study data across devices",
+        icon = Icons.Default.CloudDone,
+        accentColor = TealPrimary,
+        isLoading = false,
+        onClick = { /* TODO: toggle cloud backup */ }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // Google Drive Backup
+    SettingsActionCard(
+        title = "Google Drive Backup",
+        subtitle = "Sync and restore your study data via Google Drive",
+        icon = Icons.Default.CloudUpload,
+        accentColor = TealPrimary,
+        isLoading = uiState.isExporting,
+        onClick = onExport
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // New Backup
+    SettingsActionCard(
+        title = "New Backup",
+        subtitle = "Create a fresh backup of all your current data",
+        icon = Icons.Default.Backup,
+        accentColor = PurpleAccent,
+        isLoading = false,
+        onClick = onExport
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // Create Local Backup
+    SettingsActionCard(
+        title = "Create Local Backup",
+        subtitle = "Save backup to device local storage",
+        icon = Icons.Default.SaveAlt,
+        accentColor = AmberAccent,
+        isLoading = false,
+        onClick = onExport
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // Restore Local Backup
+    SettingsActionCard(
+        title = "Restore Local Backup",
+        subtitle = "Import a previously saved local backup",
+        icon = Icons.Default.Restore,
+        accentColor = PurpleAccent,
+        isLoading = uiState.isImporting,
+        onClick = onImport
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // Export to CSV
+    SettingsActionCard(
+        title = "Export to CSV",
+        subtitle = "Export your study data as a CSV spreadsheet",
+        icon = Icons.Default.TableChart,
+        accentColor = GreenSuccess,
+        isLoading = false,
+        onClick = { /* TODO: CSV export */ }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // Clear all data
+    SettingsActionCard(
+        title = "Clear all data",
+        subtitle = "Permanently delete all tasks, subjects, sessions, and files",
+        icon = Icons.Default.DeleteForever,
+        accentColor = RedError,
+        isLoading = false,
+        onClick = { /* TODO: clear all data confirmation */ }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    // History
+    SettingsActionCard(
+        title = "History",
+        subtitle = "View past backup and restore operations",
+        icon = Icons.Default.History,
+        accentColor = TextSecondary,
+        isLoading = false,
+        onClick = { /* TODO: backup history */ }
+    )
+    Spacer(Modifier.height(28.dp))
+
+    // How It Works
+    Text("How It Works", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+    Spacer(Modifier.height(12.dp))
+    HowItWorksCard()
 }
 
 // ═══════════════════════════════════════════════════════
@@ -281,6 +538,36 @@ private fun DataStatChip(value: String, label: String, color: Color, modifier: M
         Column(Modifier.fillMaxSize().padding(10.dp), Arrangement.Center, Alignment.CenterHorizontally) {
             Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = color)
             Text(label, fontSize = 10.sp, color = TextMuted)
+        }
+    }
+}
+
+@Composable
+private fun SettingsMenuItem(
+    title: String,
+    icon: ImageVector,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(SurfaceCard),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.15f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(accentColor.copy(0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = accentColor, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary, modifier = Modifier.weight(1f))
+            Icon(Icons.Default.ChevronRight, null, tint = TextMuted.copy(0.5f), modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -331,7 +618,7 @@ private fun HowItWorksCard() {
             StepItem("1️⃣", "Tap 'Backup to Google Drive'", "The file picker opens — choose Google Drive as the save location")
             StepItem("2️⃣", "Your data is saved as JSON", "All tasks, subjects, study sessions, and files are exported")
             StepItem("3️⃣", "Reinstall or new device?", "Tap 'Restore from Backup' and pick the file from Google Drive")
-            Divider(color = TextMuted.copy(0.15f))
+            HorizontalDivider(color = TextMuted.copy(0.15f))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, null, tint = TealPrimary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))

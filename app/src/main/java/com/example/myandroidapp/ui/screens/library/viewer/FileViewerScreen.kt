@@ -1,18 +1,10 @@
 package com.example.myandroidapp.ui.screens.library.viewer
 
-import android.annotation.SuppressLint
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.MediaController
 import android.widget.VideoView
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -21,6 +13,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,33 +28,66 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
-import com.example.myandroidapp.data.model.StudyFile
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.util.ScannedFile
+import java.io.File
 
 /**
  * Full-screen in-app file viewer.
- * - PDF  → WebView with Google Docs Viewer fallback
+ * - PDF  → Opens with system PDF viewer via Intent (most reliable)
  * - IMAGE → Zoomable/pannable Compose image (Coil)
  * - VIDEO → Android VideoView with MediaController
- * - OTHER → Fallback to system intent
+ * - OTHER → Fallback prompt to open externally
  */
 @Composable
 fun FileViewerScreen(
-    file: StudyFile,
+    scannedFile: ScannedFile,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val fileUri = remember(file.filePath) {
-        if (file.filePath.startsWith("content://") || file.filePath.startsWith("file://"))
-            Uri.parse(file.filePath)
-        else
-            null
+    val javaFile = remember(scannedFile.absolutePath) { File(scannedFile.absolutePath) }
+    val fileUri = remember(javaFile) {
+        try {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", javaFile)
+        } catch (e: Exception) {
+            Uri.fromFile(javaFile)
+        }
+    }
+
+    // For PDF, launch external viewer immediately and dismiss
+    if (scannedFile.type == "PDF") {
+        LaunchedEffect(Unit) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(fileUri, "application/pdf")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(context, "No PDF viewer app found. Install one from Play Store.", Toast.LENGTH_LONG).show()
+            }
+            onDismiss()
+        }
+        // Show a brief loading state while the intent fires
+        Box(
+            Modifier.fillMaxSize().background(Color(0xFF060915)),
+            Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = TealPrimary)
+                Spacer(Modifier.height(16.dp))
+                Text("Opening PDF…", color = TextSecondary, fontSize = 14.sp)
+            }
+        }
+        return
     }
 
     Box(
@@ -68,19 +95,24 @@ fun FileViewerScreen(
             .fillMaxSize()
             .background(Color(0xFF060915))
     ) {
-        when (file.fileType.uppercase()) {
-            "PDF" -> PdfViewer(fileUri = fileUri, fileName = file.fileName)
+        when (scannedFile.type) {
             "IMAGE" -> ImageViewer(fileUri = fileUri)
             "VIDEO" -> VideoViewer(fileUri = fileUri)
             else -> FallbackViewer(
-                file = file,
+                scannedFile = scannedFile,
                 onOpenExternal = {
-                    fileUri?.let { uri ->
+                    try {
+                        val mimeType = when (scannedFile.type) {
+                            "NOTE" -> "text/*"
+                            else -> "*/*"
+                        }
                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+                            setDataAndType(fileUri, mimeType)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        try { context.startActivity(intent) } catch (_: Exception) {}
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -111,16 +143,16 @@ fun FileViewerScreen(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    file.fileName,
+                    scannedFile.name,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (file.subject.isNotBlank()) {
+                if (scannedFile.subfolder.isNotBlank()) {
                     Text(
-                        file.subject,
+                        scannedFile.subfolder,
                         fontSize = 12.sp,
                         color = Color.White.copy(0.6f)
                     )
@@ -130,12 +162,20 @@ fun FileViewerScreen(
             // Open external button
             IconButton(
                 onClick = {
-                    fileUri?.let { uri ->
+                    try {
+                        val mimeType = when (scannedFile.type) {
+                            "IMAGE" -> "image/*"
+                            "VIDEO" -> "video/*"
+                            "NOTE" -> "text/*"
+                            else -> "*/*"
+                        }
                         val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+                            setDataAndType(fileUri, mimeType)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        try { context.startActivity(intent) } catch (_: Exception) {}
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "No app found to open this file", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier
@@ -143,99 +183,7 @@ fun FileViewerScreen(
                     .clip(CircleShape)
                     .background(Color.Black.copy(0.4f))
             ) {
-                Icon(Icons.Default.OpenInNew, "Open externally", tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════
-// PDF Viewer via Android WebView (Google Docs)
-// ═══════════════════════════════════════════════
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-private fun PdfViewer(fileUri: Uri?, fileName: String) {
-    var isLoading by remember { mutableStateOf(true) }
-    var hasError by remember { mutableStateOf(false) }
-
-    Box(Modifier.fillMaxSize()) {
-        if (fileUri != null) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.builtInZoomControls = true
-                        settings.displayZoomControls = false
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
-                        webChromeClient = WebChromeClient()
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                isLoading = true
-                            }
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                isLoading = false
-                            }
-                            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
-                                isLoading = false
-                                hasError = request?.isForMainFrame == true
-                            }
-                        }
-                        // Load PDF via content URI directly
-                        loadUrl(fileUri.toString())
-                    }
-                }
-            )
-        } else {
-            hasError = true
-        }
-
-        // Loading indicator
-        AnimatedVisibility(visible = isLoading, enter = fadeIn(), exit = fadeOut()) {
-            Box(Modifier.fillMaxSize().background(Color(0xFF060915)), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = TealPrimary, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text("Loading PDF...", color = TextSecondary, fontSize = 14.sp)
-                }
-            }
-        }
-
-        // Error state
-        AnimatedVisibility(visible = hasError && !isLoading, enter = fadeIn(), exit = fadeOut()) {
-            PdfErrorView(
-                onRetry = { hasError = false; isLoading = true }
-            )
-        }
-    }
-}
-
-@Composable
-private fun PdfErrorView(onRetry: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF060915)),
-        Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.ErrorOutline, null, tint = RedError, modifier = Modifier.size(64.dp))
-            Spacer(Modifier.height(16.dp))
-            Text("Unable to display PDF", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Try opening with an external PDF reader",
-                color = TextSecondary, fontSize = 14.sp
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onRetry,
-                colors = ButtonDefaults.buttonColors(TealPrimary, NavyDark),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Retry")
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open externally", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -375,18 +323,18 @@ private fun VideoViewer(fileUri: Uri?) {
 }
 
 // ═══════════════════════════════════════════════
-// Fallback for other file types (DOC, TXT, etc.)
+// Fallback for other file types
 // ═══════════════════════════════════════════════
 
 @Composable
-private fun FallbackViewer(file: StudyFile, onOpenExternal: () -> Unit) {
-    val fileColor = when (file.fileType.uppercase()) {
+private fun FallbackViewer(scannedFile: ScannedFile, onOpenExternal: () -> Unit) {
+    val fileColor = when (scannedFile.type) {
         "NOTE" -> AmberAccent
         else -> TextSecondary
     }
-    val fileIcon = when (file.fileType.uppercase()) {
+    val fileIcon = when (scannedFile.type) {
         "NOTE" -> Icons.Default.Description
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 
     Box(
@@ -405,18 +353,18 @@ private fun FallbackViewer(file: StudyFile, onOpenExternal: () -> Unit) {
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                file.fileName,
+                scannedFile.name,
                 color = TextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "In-app preview not available for ${file.fileType} files",
+                "In-app preview not available for ${scannedFile.type} files",
                 color = TextSecondary,
                 fontSize = 14.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(32.dp))
             Button(
@@ -425,7 +373,7 @@ private fun FallbackViewer(file: StudyFile, onOpenExternal: () -> Unit) {
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth(0.7f).height(52.dp)
             ) {
-                Icon(Icons.Default.OpenInNew, null, Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Open with App", fontWeight = FontWeight.Bold)
             }

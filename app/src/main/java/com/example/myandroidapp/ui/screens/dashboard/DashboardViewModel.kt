@@ -21,6 +21,17 @@ data class DashboardUiState(
     val streakDays: Int = 7, // placeholder
     val overallProgress: Float = 0f,
     val studentName: String = "Student",
+    // New dashboard fields
+    val isCloudBackupEnabled: Boolean = true,
+    val upcomingDeadlines: Int = 3,
+    val focusHoursTarget: Float = 40f,
+    val focusHoursCurrent: Float = 33.8f,
+    val weeklyTasksCompleted: Int = 5,
+    val weeklyTasksTotal: Int = 7,
+    val weeklyFocusHours: Float = 20.5f,
+    val pendingExams: Int = 0,
+    val pendingAssignments: Int = 5,
+    val studyPlanSet: Boolean = false,
     // Task dialog state
     val showAddTaskDialog: Boolean = false,
     val editingTask: StudyTask? = null,

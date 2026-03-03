@@ -19,6 +19,9 @@ val AmberLight = Color(0xFFFFD54F)
 val PinkAccent = Color(0xFFFF4081)
 val GreenSuccess = Color(0xFF69F0AE)
 val RedError = Color(0xFFFF5252)
+val CrimsonAccent = Color(0xFFFF1744)
+val AmberCrimsonStart = Color(0xFFFFAB40)
+val AmberCrimsonEnd = Color(0xFFFF1744)
 
 // ── Surface & Text ──
 val SurfaceDark = Color(0xFF121631)

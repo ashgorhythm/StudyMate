@@ -2,22 +2,23 @@ package com.example.myandroidapp.ui.screens.dashboard
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -33,7 +34,6 @@ import com.example.myandroidapp.data.model.Subject
 import com.example.myandroidapp.ui.screens.progress.AddEditSubjectDialog
 import com.example.myandroidapp.ui.screens.progress.DeleteConfirmationDialog
 import com.example.myandroidapp.ui.theme.*
-import com.example.myandroidapp.ui.util.WindowWidthSize
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import java.text.SimpleDateFormat
 import java.util.*
@@ -42,6 +42,7 @@ import java.util.*
 fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> Unit = {}) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
+    var showProfileOverlay by remember { mutableStateOf(false) }
 
     // ── Task Dialog ──
     if (uiState.showAddTaskDialog) {
@@ -76,11 +77,11 @@ fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> U
             .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd)))
     ) {
         if (adaptive.isTablet) {
-            // ── TABLET LAYOUT: Two-column ──
-            TabletDashboard(uiState, viewModel, adaptive.horizontalPadding, adaptive.progressRingSize, onNavigateToSettings)
+            TabletDashboard(uiState, viewModel, adaptive.horizontalPadding, adaptive.progressRingSize,
+                onProfileClick = { showProfileOverlay = true })
         } else {
-            // ── PHONE LAYOUT: Single column scroll ──
-            PhoneDashboard(uiState, viewModel, onNavigateToSettings)
+            PhoneDashboard(uiState, viewModel,
+                onProfileClick = { showProfileOverlay = true })
         }
 
         // ── FAB ──
@@ -95,6 +96,18 @@ fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> U
         ) {
             Icon(Icons.Default.Add, contentDescription = "Add Task")
         }
+
+        // ── Profile Card Overlay ──
+        if (showProfileOverlay) {
+            DashboardProfileOverlay(
+                studentName = uiState.studentName,
+                onDismiss = { showProfileOverlay = false },
+                onNavigateToSettings = {
+                    showProfileOverlay = false
+                    onNavigateToSettings()
+                }
+            )
+        }
     }
 }
 
@@ -103,7 +116,7 @@ fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> U
 // ═══════════════════════════════════════════════════════
 
 @Composable
-private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewModel, onNavigateToSettings: () -> Unit) {
+private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewModel, onProfileClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -111,11 +124,17 @@ private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewMo
             .padding(horizontal = 20.dp)
             .padding(top = 48.dp, bottom = 100.dp)
     ) {
-        GreetingSection(uiState.studentName, onNavigateToSettings)
+        GreetingSection(uiState.studentName, onProfileClick = onProfileClick)
+        Spacer(Modifier.height(16.dp))
+        SummaryRow(uiState)
         Spacer(Modifier.height(24.dp))
-        QuickStatsRow(uiState)
+        StudyProgressHeroCard(uiState)
+        Spacer(Modifier.height(24.dp))
+        ThisMonthWeeklyGrid(uiState)
         Spacer(Modifier.height(28.dp))
-        ProgressRingSection(uiState.overallProgress, 180.dp)
+        OverviewSection(uiState)
+        Spacer(Modifier.height(28.dp))
+        QuickStatsRow(uiState)
         Spacer(Modifier.height(28.dp))
         UrgentTasksSection(uiState.urgentTasks,
             onToggle = { id, done -> viewModel.toggleTaskCompletion(id, done) },
@@ -129,7 +148,9 @@ private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewMo
             onDeleteSubject = { viewModel.showDeleteConfirmation(it) }
         )
         Spacer(Modifier.height(28.dp))
-        WeeklyHeatmap()
+        StudyActivityHeatmapSection()
+        Spacer(Modifier.height(24.dp))
+        TrendSection()
     }
 }
 
@@ -143,7 +164,7 @@ private fun TabletDashboard(
     viewModel: DashboardViewModel,
     hPadding: androidx.compose.ui.unit.Dp,
     ringSize: androidx.compose.ui.unit.Dp,
-    onNavigateToSettings: () -> Unit
+    onProfileClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -152,22 +173,26 @@ private fun TabletDashboard(
             .padding(top = 32.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // ── Left Column: Greeting, Stats, Progress, Heatmap ──
+        // ── Left Column ──
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            GreetingSection(uiState.studentName, onNavigateToSettings)
+            GreetingSection(uiState.studentName, onProfileClick = onProfileClick)
+            Spacer(Modifier.height(16.dp))
+            SummaryRow(uiState)
             Spacer(Modifier.height(20.dp))
+            StudyProgressHeroCard(uiState)
+            Spacer(Modifier.height(20.dp))
+            ThisMonthWeeklyGrid(uiState)
+            Spacer(Modifier.height(24.dp))
+            OverviewSection(uiState)
+            Spacer(Modifier.height(24.dp))
             QuickStatsGrid(uiState)
-            Spacer(Modifier.height(24.dp))
-            ProgressRingSection(uiState.overallProgress, ringSize)
-            Spacer(Modifier.height(24.dp))
-            WeeklyHeatmap()
         }
 
-        // ── Right Column: Tasks, Subjects ──
+        // ── Right Column ──
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -184,6 +209,10 @@ private fun TabletDashboard(
                 onEditSubject = { viewModel.showEditSubjectDialog(it) },
                 onDeleteSubject = { viewModel.showDeleteConfirmation(it) }
             )
+            Spacer(Modifier.height(24.dp))
+            StudyActivityHeatmapSection()
+            Spacer(Modifier.height(20.dp))
+            TrendSection()
         }
     }
 }
@@ -195,7 +224,6 @@ private fun TabletDashboard(
 @Composable
 private fun QuickStatsGrid(state: DashboardUiState) {
     val stats = getStats(state)
-
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         stats.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -209,16 +237,19 @@ private fun QuickStatsGrid(state: DashboardUiState) {
 }
 
 // ═══════════════════════════════════════════════════════
-// ── Shared Components ──
+// ── Greeting Section ──
 // ═══════════════════════════════════════════════════════
 
 @Composable
-private fun GreetingSection(name: String, onNavigateToSettings: () -> Unit = {}) {
+private fun GreetingSection(name: String, onProfileClick: () -> Unit = {}) {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when {
-        hour < 12 -> "Good Morning"
-        hour < 17 -> "Good Afternoon"
-        else -> "Good Evening"
+        hour < 4 -> "Good late night"
+        hour < 8 -> "Good early morning"
+        hour < 12 -> "Good morning"
+        hour < 17 -> "Good afternoon"
+        hour < 21 -> "Good evening"
+        else -> "Good night"
     }
     Row(
         Modifier.fillMaxWidth(),
@@ -226,17 +257,582 @@ private fun GreetingSection(name: String, onNavigateToSettings: () -> Unit = {})
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text("$greeting, $name! 👋", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Spacer(Modifier.height(6.dp))
+            Text("$greeting $name.", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(4.dp))
             Text("\"Consistency is the key to mastery\"", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Light)
         }
-        IconButton(onClick = onNavigateToSettings) {
-            Icon(Icons.Default.Settings, "Settings", tint = TextSecondary)
+        Spacer(Modifier.width(12.dp))
+        // ── Animated Profile Avatar ──
+        ProfileAvatarButton(
+            name = name,
+            onClick = onProfileClick
+        )
+    }
+}
+
+@Composable
+private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
+    // Infinite rotation for the star shape behind the avatar
+    val infiniteTransition = rememberInfiniteTransition(label = "profileStar")
+    val starRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4000, easing = LinearEasing)
+        ),
+        label = "starRotation"
+    )
+    // Subtle pulse for glow
+    val glowScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // ── Rotating star / starburst shape ──
+        Canvas(
+            modifier = Modifier
+                .size(52.dp)
+                .rotate(starRotation)
+        ) {
+            val center = size / 2f
+            val outerRadius = size.minDimension / 2f
+            val innerRadius = outerRadius * 0.55f
+            val points = 8
+            val path = androidx.compose.ui.graphics.Path()
+
+            for (i in 0 until points * 2) {
+                val radius = if (i % 2 == 0) outerRadius else innerRadius
+                val angle = Math.toRadians((i * 360.0 / (points * 2)) - 90.0)
+                val x = center.width + (radius * kotlin.math.cos(angle)).toFloat()
+                val y = center.height + (radius * kotlin.math.sin(angle)).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+
+            drawPath(
+                path = path,
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        TealPrimary.copy(alpha = 0.5f * glowScale),
+                        PurpleAccent.copy(alpha = 0.4f * glowScale),
+                        TealPrimary.copy(alpha = 0.3f * glowScale),
+                        PurpleAccent.copy(alpha = 0.5f * glowScale),
+                        TealPrimary.copy(alpha = 0.5f * glowScale)
+                    )
+                )
+            )
+        }
+
+        // ── Profile circle ──
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(listOf(TealPrimary, PurpleAccent))
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                name.take(1).uppercase(),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
         }
     }
 }
 
-// Stat data class
+// ═══════════════════════════════════════════════════════
+// ── Dashboard Profile Overlay ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun DashboardProfileOverlay(
+    studentName: String,
+    onDismiss: () -> Unit,
+    onNavigateToSettings: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .clickable(enabled = false) { },
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = NavyMedium),
+            border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.2f))
+        ) {
+            Column(
+                Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // ── Top row: X (close) and Settings ──
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onNavigateToSettings, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Settings, "Settings", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // ── Avatar with animated star ──
+                ProfileAvatarButton(
+                    name = studentName,
+                    onClick = { }
+                )
+                Spacer(Modifier.height(16.dp))
+
+                // ── Greeting ──
+                Text(
+                    "Hi, $studentName!",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(20.dp))
+
+                // ── Manage Profile Button ──
+                Button(
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NavyDark,
+                        contentColor = TextPrimary
+                    ),
+                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        "Manage your student profile",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Summary Row ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun SummaryRow(state: DashboardUiState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+        border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.15f))
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "You have cloud backup, a ${state.streakDays}-day focus streak, and ${state.upcomingDeadlines} upcoming deadlines.",
+                fontSize = 13.sp,
+                color = TextSecondary,
+                lineHeight = 18.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CloudDone, null, tint = TealPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Backup", fontSize = 11.sp, color = TealPrimary, fontWeight = FontWeight.SemiBold)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocalFireDepartment, null, tint = AmberAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("${state.streakDays}", fontSize = 13.sp, color = AmberAccent, fontWeight = FontWeight.Bold)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Notifications, null, tint = PinkAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("${state.upcomingDeadlines}", fontSize = 13.sp, color = PinkAccent, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Study Progress Hero Card ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun StudyProgressHeroCard(state: DashboardUiState) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = state.overallProgress,
+        animationSpec = tween(1200, easing = FastOutSlowInEasing),
+        label = "heroProgress"
+    )
+    val focusProgress = if (state.focusHoursTarget > 0f) (state.focusHoursCurrent / state.focusHoursTarget).coerceIn(0f, 1f) else 0f
+    val animatedFocusProgress by animateFloatAsState(
+        targetValue = focusProgress,
+        animationSpec = tween(1000, easing = FastOutSlowInEasing),
+        label = "focusProgress"
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, AmberAccent.copy(alpha = 0.3f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            AmberCrimsonStart.copy(alpha = 0.15f),
+                            AmberCrimsonEnd.copy(alpha = 0.12f)
+                        )
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Column {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Study Progress", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text("Current Progress", fontSize = 12.sp, color = TextSecondary)
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        String.format(Locale.US, "%.1f", animatedProgress * 100),
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = AmberAccent
+                    )
+                    Text(
+                        "%",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AmberAccent.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("complete", fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(bottom = 8.dp))
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AmberAccent.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎓", fontSize = 24.sp)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Focus Hours", fontSize = 12.sp, color = TextSecondary)
+                    Text(
+                        "${state.focusHoursCurrent.toInt()}/${state.focusHoursTarget.toInt()} hrs",
+                        fontSize = 12.sp,
+                        color = AmberAccent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { animatedFocusProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = AmberAccent,
+                    trackColor = NavyLight.copy(alpha = 0.6f)
+                )
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── This Month Weekly Grid ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun ThisMonthWeeklyGrid(state: DashboardUiState) {
+    Text("This month", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+    Spacer(Modifier.height(12.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Weekly Tasks card
+        Card(
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+            border = BorderStroke(1.dp, GreenSuccess.copy(alpha = 0.2f))
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Weekly Tasks", fontSize = 13.sp, color = TextSecondary)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.TrendingUp, null, tint = GreenSuccess, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${state.weeklyTasksCompleted}/${state.weeklyTasksTotal} tasks",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GreenSuccess
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Compared to last month", fontSize = 10.sp, color = TextMuted)
+            }
+        }
+        // Weekly Focus card
+        Card(
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+            border = BorderStroke(1.dp, RedError.copy(alpha = 0.2f))
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Weekly Focus", fontSize = 13.sp, color = TextSecondary)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.TrendingDown, null, tint = RedError, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${state.weeklyFocusHours} hours",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RedError
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Compared to last month", fontSize = 10.sp, color = TextMuted)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Overview Section ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun OverviewSection(state: DashboardUiState) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Overview", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        Icon(Icons.Default.GridView, null, tint = TextMuted, modifier = Modifier.size(20.dp))
+    }
+    Spacer(Modifier.height(12.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Study Plan card
+        Card(
+            modifier = Modifier.weight(1f).height(140.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+            border = BorderStroke(1.dp, PurpleAccent.copy(alpha = 0.2f))
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Study Plan", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Row(
+                    Modifier.fillMaxWidth().height(40.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    listOf(0.3f, 0.6f, 0.4f, 0.8f, 0.5f).forEach { h ->
+                        Box(
+                            Modifier
+                                .width(8.dp)
+                                .fillMaxHeight(h)
+                                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                                .background(PurpleAccent.copy(alpha = 0.4f))
+                        )
+                    }
+                }
+                Text(
+                    if (state.studyPlanSet) "Active" else "No plan set",
+                    fontSize = 11.sp,
+                    color = if (state.studyPlanSet) GreenSuccess else TextMuted
+                )
+            }
+        }
+        // Deadlines card
+        Card(
+            modifier = Modifier.weight(1f).height(140.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+            border = BorderStroke(1.dp, PinkAccent.copy(alpha = 0.2f))
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Deadlines", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Column {
+                    Text("${state.pendingExams} Exams", fontSize = 12.sp, color = TextSecondary)
+                    Spacer(Modifier.height(2.dp))
+                    Text("${state.pendingAssignments} Assignments", fontSize = 12.sp, color = TextSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    val totalPending = state.pendingExams + state.pendingAssignments
+                    Text(
+                        "$totalPending Total Pending",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CrimsonAccent
+                    )
+                }
+                Text("Deadline Count", fontSize = 10.sp, color = TextMuted)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Study Activity Heatmap Section ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun StudyActivityHeatmapSection() {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Study Activity Heatmap", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        IconButton(onClick = { /* TODO: expand heatmap */ }) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, "More", tint = TextMuted, modifier = Modifier.size(20.dp))
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Card(Modifier.fillMaxWidth(), RoundedCornerShape(16.dp), CardDefaults.cardColors(SurfaceCard)) {
+        Column(Modifier.padding(16.dp)) {
+            val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            val intensities = listOf(0.8f, 0.6f, 1.0f, 0.4f, 0.9f, 0.3f, 0.7f)
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+                days.forEachIndexed { idx, day ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(TealPrimary.copy(intensities[idx])))
+                        Spacer(Modifier.height(4.dp))
+                        Text(day, fontSize = 10.sp, color = TextSecondary)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), Arrangement.End, Alignment.CenterVertically) {
+                Text("Less", fontSize = 10.sp, color = TextMuted)
+                Spacer(Modifier.width(4.dp))
+                listOf(0.2f, 0.4f, 0.6f, 0.8f, 1.0f).forEach { a -> Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(TealPrimary.copy(a))); Spacer(Modifier.width(2.dp)) }
+                Spacer(Modifier.width(4.dp))
+                Text("More", fontSize = 10.sp, color = TextMuted)
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Trend Section ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun TrendSection() {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Trend", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        IconButton(onClick = { /* TODO: expand trend */ }) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, "More", tint = TextMuted, modifier = Modifier.size(20.dp))
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Card(
+        Modifier.fillMaxWidth(),
+        RoundedCornerShape(16.dp),
+        CardDefaults.cardColors(SurfaceCard),
+        border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.15f))
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth().height(60.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                listOf(0.3f, 0.5f, 0.4f, 0.7f, 0.6f, 0.8f, 0.9f).forEach { h ->
+                    Box(
+                        Modifier
+                            .width(14.dp)
+                            .fillMaxHeight(h)
+                            .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(TealPrimary, PurpleAccent.copy(alpha = 0.6f))
+                                )
+                            )
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                Text("Week 1", fontSize = 10.sp, color = TextMuted)
+                Text("Week 4", fontSize = 10.sp, color = TextMuted)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Study hours trending upward this month",
+                fontSize = 12.sp,
+                color = GreenSuccess,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Shared Components ──
+// ═══════════════════════════════════════════════════════
+
 private data class StatItem(val label: String, val value: String, val color: Color, val icon: @Composable () -> Unit)
 
 private fun getStats(state: DashboardUiState): List<StatItem> = listOf(
@@ -435,35 +1031,3 @@ private fun SubjectCard(subject: Subject, onEdit: () -> Unit, onDelete: () -> Un
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// ── Weekly Heatmap ──
-// ═══════════════════════════════════════════════════════
-
-@Composable
-private fun WeeklyHeatmap() {
-    Text("Study Heatmap", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-    Spacer(Modifier.height(12.dp))
-    Card(Modifier.fillMaxWidth(), RoundedCornerShape(16.dp), CardDefaults.cardColors(SurfaceCard)) {
-        Column(Modifier.padding(16.dp)) {
-            val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-            val intensities = listOf(0.8f, 0.6f, 1.0f, 0.4f, 0.9f, 0.3f, 0.7f)
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                days.forEachIndexed { idx, day ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(TealPrimary.copy(intensities[idx])))
-                        Spacer(Modifier.height(4.dp))
-                        Text(day, fontSize = 10.sp, color = TextSecondary)
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), Arrangement.End, Alignment.CenterVertically) {
-                Text("Less", fontSize = 10.sp, color = TextMuted)
-                Spacer(Modifier.width(4.dp))
-                listOf(0.2f, 0.4f, 0.6f, 0.8f, 1.0f).forEach { a -> Box(Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)).background(TealPrimary.copy(a))); Spacer(Modifier.width(2.dp)) }
-                Spacer(Modifier.width(4.dp))
-                Text("More", fontSize = 10.sp, color = TextMuted)
-            }
-        }
-    }
-}
