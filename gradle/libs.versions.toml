@@ -20,6 +20,12 @@ ksp = "2.3.2"
 generativeai = "0.9.0"
 composeActivity = "1.12.4"
 coil = "2.7.0"
+playAuth = "21.0.0"
+googleApiClient = "1.33.0"
+googleApiDrive = "v3-rev20220815-2.0.0"
+guava = "31.1-android"
+coroutinesPlayServices = "1.7.3"
+
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -68,6 +74,13 @@ generative-ai = { group = "com.google.ai.client.generativeai", name = "generativ
 
 # Coil (Image Loading)
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
+# Google Drive & Auth
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playAuth" }
+google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClient" }
+google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version.ref = "googleApiDrive" }
+guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

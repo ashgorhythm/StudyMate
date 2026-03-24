@@ -18,6 +18,9 @@ import com.example.myandroidapp.ui.screens.focus.FocusViewModel
 import com.example.myandroidapp.ui.screens.library.LibraryScreen
 import com.example.myandroidapp.ui.screens.library.LibraryViewModel
 import com.example.myandroidapp.ui.screens.library.LibraryViewModelFactory
+import com.example.myandroidapp.ui.screens.profile.ProfileScreen
+import com.example.myandroidapp.ui.screens.profile.ProfileViewModel
+import com.example.myandroidapp.ui.screens.profile.ProfileViewModelFactory
 import com.example.myandroidapp.ui.screens.settings.SettingsScreen
 import com.example.myandroidapp.ui.screens.settings.SettingsViewModel
 import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
@@ -40,7 +43,8 @@ fun AppNavGraph(
             val vm: DashboardViewModel = viewModel(factory = DashboardViewModelFactory(repository, context))
             DashboardScreen(
                 viewModel = vm,
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
             )
         }
         composable(Screen.Focus.route) {
@@ -65,7 +69,26 @@ fun AppNavGraph(
                     context = context
                 )
             )
-            SettingsScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            SettingsScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onNavigateToInterface = { navController.navigate(Screen.InterfaceSettings.route) },
+                onNavigateToCommunity = { navController.navigate(Screen.Community.route) }
+            )
+        }
+        composable(Screen.Profile.route) {
+            val vm: ProfileViewModel = viewModel(factory = ProfileViewModelFactory(context))
+            ProfileScreen(viewModel = vm, onBack = { navController.popBackStack() })
+        }
+        composable(Screen.InterfaceSettings.route) {
+            // we will create InterfaceSettingsScreen shortly
+            com.example.myandroidapp.ui.screens.settings.InterfaceSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.Community.route) {
+            // we will create CommunityScreen shortly
+            com.example.myandroidapp.ui.screens.community.CommunityScreen(onBack = { navController.popBackStack() })
         }
     }
 }
+

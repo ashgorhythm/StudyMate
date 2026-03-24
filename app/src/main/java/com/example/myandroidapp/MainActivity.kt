@@ -31,6 +31,7 @@ import com.example.myandroidapp.ui.navigation.bottomNavItems
 import com.example.myandroidapp.ui.screens.focus.FocusViewModel
 import com.example.myandroidapp.ui.screens.focus.FocusViewModelFactory
 import com.example.myandroidapp.ui.screens.onboarding.OnboardingScreen
+import com.example.myandroidapp.ui.screens.onboarding.StudyBuddySetupScreen
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlinx.coroutines.flow.first
@@ -51,41 +52,55 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private enum class AppScreen { LOADING, ONBOARDING, FOLDER_SETUP, MAIN }
+
 @Composable
 private fun AppEntryPoint(app: StudentCompanionApp) {
     val context = LocalContext.current
     val userPreferences = remember { UserPreferences(context) }
     val scope = rememberCoroutineScope()
 
-    var isLoading by remember { mutableStateOf(true) }
-    var showOnboarding by remember { mutableStateOf(false) }
+    var screen by remember { mutableStateOf(AppScreen.LOADING) }
 
     LaunchedEffect(Unit) {
-        val completed = userPreferences.onboardingCompleted.first()
-        showOnboarding = !completed
-        isLoading = false
+        val onboardingDone = userPreferences.onboardingCompleted.first()
+        val folderSetupDone = userPreferences.folderSetupShown.first()
+        screen = when {
+            !onboardingDone -> AppScreen.ONBOARDING
+            !folderSetupDone -> AppScreen.FOLDER_SETUP
+            else -> AppScreen.MAIN
+        }
     }
 
-    if (isLoading) {
+    if (screen == AppScreen.LOADING) {
         Box(Modifier.fillMaxSize().background(NavyDark))
-    } else {
-        AnimatedContent(
-            targetState = showOnboarding,
-            transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(300)) },
-            label = "appTransition"
-        ) { shouldShowOnboarding ->
-            if (shouldShowOnboarding) {
-                OnboardingScreen(
-                    onComplete = { name ->
-                        scope.launch {
-                            userPreferences.completeOnboarding(name)
-                            showOnboarding = false
-                        }
+        return
+    }
+
+    AnimatedContent(
+        targetState = screen,
+        transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(300)) },
+        label = "appTransition"
+    ) { currentScreen ->
+        when (currentScreen) {
+            AppScreen.ONBOARDING -> OnboardingScreen(
+                onComplete = { name ->
+                    scope.launch {
+                        userPreferences.completeOnboarding(name)
+                        screen = AppScreen.FOLDER_SETUP
                     }
-                )
-            } else {
-                MainApp(app)
-            }
+                }
+            )
+            AppScreen.FOLDER_SETUP -> StudyBuddySetupScreen(
+                onContinue = {
+                    scope.launch {
+                        userPreferences.markFolderSetupShown()
+                        screen = AppScreen.MAIN
+                    }
+                }
+            )
+            AppScreen.MAIN -> MainApp(app)
+            AppScreen.LOADING -> Box(Modifier.fillMaxSize().background(NavyDark))
         }
     }
 }
@@ -223,5 +238,8 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
         Screen.Library -> if (selected) Icons.Filled.LibraryBooks else Icons.Outlined.LibraryBooks
         Screen.AiChat -> if (selected) Icons.Filled.SmartToy else Icons.Outlined.SmartToy
         Screen.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
+        Screen.Profile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
+        Screen.InterfaceSettings -> if (selected) Icons.Filled.Palette else Icons.Outlined.Palette
+        Screen.Community -> if (selected) Icons.Filled.Groups else Icons.Outlined.Groups
     }
 }

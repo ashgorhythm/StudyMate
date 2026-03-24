@@ -12,6 +12,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "st
 object PreferencesKeys {
     val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     val STUDENT_NAME = stringPreferencesKey("student_name")
+    val FOLDER_SETUP_SHOWN = booleanPreferencesKey("folder_setup_shown")
 }
 
 class UserPreferences(private val context: Context) {
@@ -24,6 +25,10 @@ class UserPreferences(private val context: Context) {
         prefs[PreferencesKeys.STUDENT_NAME] ?: "Student"
     }
 
+    val folderSetupShown: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[PreferencesKeys.FOLDER_SETUP_SHOWN] ?: false
+    }
+
     suspend fun completeOnboarding(name: String) {
         context.dataStore.edit { prefs ->
             prefs[PreferencesKeys.ONBOARDING_COMPLETED] = true
@@ -34,6 +39,12 @@ class UserPreferences(private val context: Context) {
     suspend fun updateName(name: String) {
         context.dataStore.edit { prefs ->
             prefs[PreferencesKeys.STUDENT_NAME] = name
+        }
+    }
+
+    suspend fun markFolderSetupShown() {
+        context.dataStore.edit { prefs ->
+            prefs[PreferencesKeys.FOLDER_SETUP_SHOWN] = true
         }
     }
 }

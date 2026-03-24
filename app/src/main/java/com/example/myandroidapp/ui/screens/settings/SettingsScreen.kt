@@ -24,12 +24,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.service.BackupService
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToProfile: () -> Unit = {},
+    onNavigateToInterface: () -> Unit = {},
+    onNavigateToCommunity: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
@@ -45,6 +52,38 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.importFromUri(it) }
+    }
+
+    // Google Sign-In
+    var authAction by remember { mutableStateOf<String?>(null) } // "upload" or "download"
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                if (authAction == "upload") {
+                    viewModel.uploadToGoogleDrive(account)
+                } else if (authAction == "download") {
+                    viewModel.downloadFromGoogleDrive(account)
+                }
+            } catch (e: Exception) {
+                // handle failure silently or via toast
+            }
+        }
+    }
+
+    val triggerGoogleSignIn = { action: String ->
+        authAction = action
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
+            .build()
+        val client = GoogleSignIn.getClient(context, gso)
+        googleSignInLauncher.launch(client.signInIntent)
     }
 
     // State
@@ -160,7 +199,9 @@ fun SettingsScreen(
                         uiState = uiState,
                         onBack = { showDataBackup = false },
                         onExport = { exportLauncher.launch(BackupService.BACKUP_FILE_NAME) },
-                        onImport = { showImportConfirm = true }
+                        onImport = { showImportConfirm = true },
+                        onGoogleDriveUpload = { triggerGoogleSignIn("upload") },
+                        onGoogleDriveDownload = { triggerGoogleSignIn("download") }
                     )
                 } else {
                     // ═══════════════════════════════════════
@@ -231,7 +272,7 @@ fun SettingsScreen(
                         title = "Interface & Personalization",
                         icon = Icons.Default.Palette,
                         accentColor = PurpleAccent,
-                        onClick = { /* TODO */ }
+                        onClick = onNavigateToInterface
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
@@ -252,7 +293,7 @@ fun SettingsScreen(
                         title = "University Community",
                         icon = Icons.Default.Groups,
                         accentColor = PinkAccent,
-                        onClick = { /* TODO */ }
+                        onClick = onNavigateToCommunity
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
@@ -304,8 +345,7 @@ fun SettingsScreen(
                     onDismiss = { showProfileOverlay = false },
                     onManageProfile = {
                         showProfileOverlay = false
-                        editName = uiState.studentName
-                        showNameDialog = true
+                        onNavigateToProfile()
                     }
                 )
             }
@@ -342,7 +382,7 @@ private fun ProfileCardOverlay(
                 Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top row: X and gear
+                // Top row: X (close) and gear pointing to Settings
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -350,8 +390,9 @@ private fun ProfileCardOverlay(
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = onManageProfile, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Settings, "Settings", tint = TextMuted, modifier = Modifier.size(20.dp))
+                    // Gear icon here is just decorative/close since we're already in Settings
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Settings, "Settings", tint = TealPrimary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -391,13 +432,15 @@ private fun ProfileCardOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = NavyDark,
-                        contentColor = TextPrimary
+                        containerColor = TealPrimary.copy(alpha = 0.15f),
+                        contentColor = TealPrimary
                     ),
-                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.3f))
+                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.5f))
                 ) {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        "Manage your student profile",
+                        "Manage Student Profile",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -417,7 +460,9 @@ private fun DataBackupSection(
     uiState: SettingsUiState,
     onBack: () -> Unit,
     onExport: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onGoogleDriveUpload: () -> Unit,
+    onGoogleDriveDownload: () -> Unit
 ) {
     // Header
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -429,7 +474,7 @@ private fun DataBackupSection(
     }
     Spacer(Modifier.height(24.dp))
 
-    // Cloud Backup
+    // Cloud Backup (Placeholder for future)
     SettingsActionCard(
         title = "Cloud Backup",
         subtitle = "Sync and restore your study data across devices",
@@ -447,18 +492,18 @@ private fun DataBackupSection(
         icon = Icons.Default.CloudUpload,
         accentColor = TealPrimary,
         isLoading = uiState.isExporting,
-        onClick = onExport
+        onClick = onGoogleDriveUpload
     )
     Spacer(Modifier.height(12.dp))
 
-    // New Backup
+    // Restore from Google Drive
     SettingsActionCard(
-        title = "New Backup",
-        subtitle = "Create a fresh backup of all your current data",
-        icon = Icons.Default.Backup,
-        accentColor = PurpleAccent,
-        isLoading = false,
-        onClick = onExport
+        title = "Restore from Google Drive",
+        subtitle = "Download and restore latest backup from Google Drive",
+        icon = Icons.Default.CloudDownload,
+        accentColor = TealPrimary,
+        isLoading = uiState.isImporting,
+        onClick = onGoogleDriveDownload
     )
     Spacer(Modifier.height(12.dp))
 

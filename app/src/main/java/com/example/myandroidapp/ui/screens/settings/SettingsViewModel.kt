@@ -11,6 +11,8 @@ import com.example.myandroidapp.data.local.SubjectDao
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.service.BackupService
 import com.example.myandroidapp.service.ImportResult
+import com.example.myandroidapp.service.GoogleDriveService
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -113,6 +115,52 @@ class SettingsViewModel(
 
     fun clearMessages() {
         _uiState.update { it.copy(exportSuccess = false, importResult = null, errorMessage = null) }
+    }
+
+    // Google Drive direct API integration
+    fun uploadToGoogleDrive(account: GoogleSignInAccount) {
+        _uiState.update { it.copy(isExporting = true, exportSuccess = false, errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                // 1. Export local DB to a JSON string
+                val jsonContent = backupService.exportToJson(context)
+                
+                // 2. Upload to Drive using GoogleDriveService
+                val driveService = GoogleDriveService(context, account)
+                val result = driveService.uploadBackup(jsonContent)
+                
+                if (result.isSuccess) {
+                    _uiState.update { it.copy(isExporting = false, exportSuccess = true, errorMessage = null) }
+                } else {
+                    _uiState.update { it.copy(isExporting = false, errorMessage = "Drive upload failed: ${result.exceptionOrNull()?.message}") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isExporting = false, errorMessage = "Drive upload error: ${e.message}") }
+            }
+        }
+    }
+
+    fun downloadFromGoogleDrive(account: GoogleSignInAccount) {
+        _uiState.update { it.copy(isImporting = true, importResult = null, errorMessage = null) }
+        viewModelScope.launch {
+            try {
+                // 1. Download JSON from Drive
+                val driveService = GoogleDriveService(context, account)
+                val downloadResult = driveService.downloadBackup()
+                
+                if (downloadResult.isSuccess) {
+                    val jsonContent = downloadResult.getOrThrow()
+                    // 2. Import into local DB
+                    val importResult = backupService.importFromJson(context, jsonContent)
+                    _uiState.update { it.copy(isImporting = false, importResult = importResult, errorMessage = null) }
+                    loadData()
+                } else {
+                    _uiState.update { it.copy(isImporting = false, errorMessage = "Drive download failed: ${downloadResult.exceptionOrNull()?.message}") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isImporting = false, errorMessage = "Drive download error: ${e.message}") }
+            }
+        }
     }
 }
 

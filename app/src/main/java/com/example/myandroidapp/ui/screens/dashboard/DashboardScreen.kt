@@ -39,10 +39,15 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> Unit = {}) {
+fun DashboardScreen(
+    viewModel: DashboardViewModel,
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
     var showProfileOverlay by remember { mutableStateOf(false) }
+
 
     // ── Task Dialog ──
     if (uiState.showAddTaskDialog) {
@@ -105,6 +110,10 @@ fun DashboardScreen(viewModel: DashboardViewModel, onNavigateToSettings: () -> U
                 onNavigateToSettings = {
                     showProfileOverlay = false
                     onNavigateToSettings()
+                },
+                onNavigateToProfile = {
+                    showProfileOverlay = false
+                    onNavigateToProfile()
                 }
             )
         }
@@ -272,25 +281,24 @@ private fun GreetingSection(name: String, onProfileClick: () -> Unit = {}) {
 
 @Composable
 private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
-    // Infinite rotation for the star shape behind the avatar
-    val infiniteTransition = rememberInfiniteTransition(label = "profileStar")
-    val starRotation by infiniteTransition.animateFloat(
+    // Scalloped circle animation: slow rotation + subtle pulse
+    val infiniteTransition = rememberInfiniteTransition(label = "profileScallop")
+    val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4000, easing = LinearEasing)
+            animation = tween(durationMillis = 6000, easing = LinearEasing)
         ),
-        label = "starRotation"
+        label = "scallopRotation"
     )
-    // Subtle pulse for glow
-    val glowScale by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.08f,
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = EaseInOutSine),
+            animation = tween(1800, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glowScale"
+        label = "scallopPulse"
     )
 
     Box(
@@ -303,23 +311,25 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        // ── Rotating star / starburst shape ──
+        // ── Rotating scalloped circle (smooth wavy ring) ──
         Canvas(
             modifier = Modifier
                 .size(52.dp)
-                .rotate(starRotation)
+                .rotate(rotation)
         ) {
-            val center = size / 2f
-            val outerRadius = size.minDimension / 2f
-            val innerRadius = outerRadius * 0.55f
-            val points = 8
+            val cx = size.minDimension / 2f
+            val baseRadius = cx * pulse
+            val scallops = 12
+            val amplitude = cx * 0.13f
             val path = androidx.compose.ui.graphics.Path()
+            val totalPoints = scallops * 8
 
-            for (i in 0 until points * 2) {
-                val radius = if (i % 2 == 0) outerRadius else innerRadius
-                val angle = Math.toRadians((i * 360.0 / (points * 2)) - 90.0)
-                val x = center.width + (radius * kotlin.math.cos(angle)).toFloat()
-                val y = center.height + (radius * kotlin.math.sin(angle)).toFloat()
+            for (i in 0..totalPoints) {
+                val angle = (2.0 * Math.PI * i / totalPoints) - Math.PI / 2
+                val wave = amplitude * kotlin.math.sin(scallops * angle).toFloat()
+                val r = baseRadius + wave
+                val x = cx + r * kotlin.math.cos(angle).toFloat()
+                val y = cx + r * kotlin.math.sin(angle).toFloat()
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             path.close()
@@ -328,11 +338,11 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
                 path = path,
                 brush = Brush.sweepGradient(
                     colors = listOf(
-                        TealPrimary.copy(alpha = 0.5f * glowScale),
-                        PurpleAccent.copy(alpha = 0.4f * glowScale),
-                        TealPrimary.copy(alpha = 0.3f * glowScale),
-                        PurpleAccent.copy(alpha = 0.5f * glowScale),
-                        TealPrimary.copy(alpha = 0.5f * glowScale)
+                        TealPrimary.copy(alpha = 0.7f),
+                        PurpleAccent.copy(alpha = 0.55f),
+                        TealPrimary.copy(alpha = 0.4f),
+                        PurpleAccent.copy(alpha = 0.7f),
+                        TealPrimary.copy(alpha = 0.7f)
                     )
                 )
             )
@@ -366,7 +376,8 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
 private fun DashboardProfileOverlay(
     studentName: String,
     onDismiss: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToProfile: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -391,7 +402,7 @@ private fun DashboardProfileOverlay(
                 Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // ── Top row: X (close) and Settings ──
+                // ── Top row: X (close) and Settings icon ──
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -400,15 +411,15 @@ private fun DashboardProfileOverlay(
                         Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(20.dp))
                     }
                     IconButton(onClick = onNavigateToSettings, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Settings, "Settings", tint = TextMuted, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Settings, "Settings", tint = TealPrimary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
 
-                // ── Avatar with animated star ──
+                // ── Avatar with scalloped animation ──
                 ProfileAvatarButton(
                     name = studentName,
-                    onClick = { }
+                    onClick = onNavigateToProfile
                 )
                 Spacer(Modifier.height(16.dp))
 
@@ -421,19 +432,21 @@ private fun DashboardProfileOverlay(
                 )
                 Spacer(Modifier.height(20.dp))
 
-                // ── Manage Profile Button ──
+                // ── Manage Student Profile Button ──
                 Button(
-                    onClick = onNavigateToSettings,
+                    onClick = onNavigateToProfile,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = NavyDark,
-                        contentColor = TextPrimary
+                        containerColor = TealPrimary.copy(alpha = 0.15f),
+                        contentColor = TealPrimary
                     ),
-                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.3f))
+                    border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.5f))
                 ) {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        "Manage your student profile",
+                        "Manage Student Profile",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(vertical = 4.dp)
