@@ -3,31 +3,49 @@ package com.example.myandroidapp.service
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.net.Uri
+import androidx.core.net.toUri
 
 /**
  * Manages ambient sound playback (looping) for the Focus Mode timer.
  *
  * Usage:
- *  AmbientSoundPlayer.play(context, "Rain")   // start ambient sound
- *  AmbientSoundPlayer.stop()                   // stop ambient sound
- *  AmbientSoundPlayer.setVolume(0.8f)          // adjust volume
+ *  AmbientSoundPlayer.play(context, "Deep Focus") // start ambient sound
+ *  AmbientSoundPlayer.stop()                        // stop ambient sound
+ *  AmbientSoundPlayer.setVolume(0.8f)               // adjust volume
  */
 object AmbientSoundPlayer {
 
     private var mediaPlayer: MediaPlayer? = null
     private var currentSound: String = "Silence"
 
-    /**
-     * Available ambient sounds mapped to their raw resource IDs or URL sources.
-     * Since bundling audio assets increases APK size, we use free online streaming URLs.
-     * If offline support is needed, add mp3 assets in res/raw/ and use R.raw.xxx.
-     */
-    private val soundUrls = mapOf(
-        "Rain"   to "https://www.soundjay.com/nature/rain-01.mp3",
-        "Forest" to "https://www.soundjay.com/nature/crickets-1.mp3",
-        "Lo-fi"  to "https://www.soundjay.com/ambient/sounds/coffee-shop.mp3"
-    )
+    // Prefer bundled tracks from res/raw; fallback keeps playback working until assets are added.
+    private fun resolveSoundUri(context: Context, soundName: String): Uri? {
+        val rawName = when (soundName) {
+            "Deep Focus" -> "deep_focus"
+            "Calm Piano" -> "calm_piano"
+            "White Noise" -> "white_noise"
+            "Lo-Fi Beats" -> "lofi_beats"
+            else -> null
+        }
+
+        if (rawName != null) {
+            val resId = context.resources.getIdentifier(rawName, "raw", context.packageName)
+            if (resId != 0) {
+                return "android.resource://${context.packageName}/$resId".toUri()
+            }
+        }
+
+        // Backward-compatible fallback when raw assets are not yet bundled.
+        return when (soundName) {
+            "Deep Focus" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            "Calm Piano" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            "White Noise" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            "Lo-Fi Beats" -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            else -> null
+        }
+    }
 
     /**
      * Play an ambient sound by name. Stops the previous sound first.
@@ -39,7 +57,7 @@ object AmbientSoundPlayer {
 
         if (soundName == "Silence") return
 
-        val url = soundUrls[soundName] ?: return
+        val soundUri = resolveSoundUri(context, soundName) ?: return
 
         mediaPlayer = MediaPlayer().apply {
             val audioAttributes = AudioAttributes.Builder()
@@ -47,13 +65,10 @@ object AmbientSoundPlayer {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
             setAudioAttributes(audioAttributes)
-            setDataSource(url)
+            setDataSource(context, soundUri)
             isLooping = true
             setOnPreparedListener { start() }
-            setOnErrorListener { _, _, _ ->
-                // Silent fail — don't crash if sound can't load
-                false
-            }
+            setOnErrorListener { _, _, _ -> false }
             prepareAsync() // Non-blocking
         }
     }

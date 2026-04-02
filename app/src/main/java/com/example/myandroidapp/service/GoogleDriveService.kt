@@ -2,8 +2,8 @@ package com.example.myandroidapp.service
 
 import android.content.Context
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 
 class GoogleDriveService(private val context: Context, account: GoogleSignInAccount) {
 
-    private val credential = GoogleAccountCredential.usingOAuth2(
+    private val credential: GoogleAccountCredential = GoogleAccountCredential.usingOAuth2(
         context, listOf(DriveScopes.DRIVE_FILE)
     ).apply {
         selectedAccount = account.account
@@ -35,9 +35,8 @@ class GoogleDriveService(private val context: Context, account: GoogleSignInAcco
     suspend fun uploadBackup(jsonContent: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             // Check if file exists
-            val query = "name = 'studymate_backup.json' and '${credential.selectedAccountName}' in owners and trashed = false"
             val fileList: FileList = driveService.files().list()
-                .setQ(query)
+                .setQ("name = 'studymate_backup.json' and trashed = false")
                 .setSpaces("drive")
                 .setFields("files(id, name)")
                 .execute()
@@ -54,10 +53,8 @@ class GoogleDriveService(private val context: Context, account: GoogleSignInAcco
             )
 
             if (existingFileId != null) {
-                // Update file
                 driveService.files().update(existingFileId, null, mediaContent).execute()
             } else {
-                // Create new
                 driveService.files().create(fileMetadata, mediaContent).execute()
             }
 
@@ -73,9 +70,8 @@ class GoogleDriveService(private val context: Context, account: GoogleSignInAcco
      */
     suspend fun downloadBackup(): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val query = "name = 'studymate_backup.json' and '${credential.selectedAccountName}' in owners and trashed = false"
             val fileList: FileList = driveService.files().list()
-                .setQ(query)
+                .setQ("name = 'studymate_backup.json' and trashed = false")
                 .setSpaces("drive")
                 .setFields("files(id, name)")
                 .execute()

@@ -8,10 +8,11 @@ import com.example.myandroidapp.data.model.StudyFile
 import com.example.myandroidapp.data.model.StudySession
 import com.example.myandroidapp.data.model.StudyTask
 import com.example.myandroidapp.data.model.Subject
+import com.example.myandroidapp.data.local.CommunityDao
 
 @Database(
-    entities = [StudyTask::class, Subject::class, StudySession::class, StudyFile::class],
-    version = 1,
+    entities = [StudyTask::class, Subject::class, StudySession::class, StudyFile::class, com.example.myandroidapp.data.model.CommunityPostEntity::class, com.example.myandroidapp.data.model.CommunityCommentEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,6 +20,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun subjectDao(): SubjectDao
     abstract fun studySessionDao(): StudySessionDao
     abstract fun studyFileDao(): StudyFileDao
+    abstract fun communityDao(): CommunityDao
 
     companion object {
         @Volatile
@@ -32,7 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "student_companion_db"
                 )
                     .fallbackToDestructiveMigration()
-                    .build()
+                     .build()
                 INSTANCE = instance
                 instance
             }

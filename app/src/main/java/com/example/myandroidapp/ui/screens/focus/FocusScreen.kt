@@ -7,18 +7,70 @@ import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.EaseInOutSine
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AlarmAdd
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,7 +79,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,8 +88,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.data.model.AllowedContact
-import com.example.myandroidapp.data.model.Subject
-import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.AmberAccent
+import com.example.myandroidapp.ui.theme.NavyDark
+import com.example.myandroidapp.ui.theme.NavyLight
+import com.example.myandroidapp.ui.theme.NavyMedium
+import com.example.myandroidapp.ui.theme.PurpleAccent
+import com.example.myandroidapp.ui.theme.RedError
+import com.example.myandroidapp.ui.theme.SurfaceCard
+import com.example.myandroidapp.ui.theme.TealGlow
+import com.example.myandroidapp.ui.theme.TealPrimary
+import com.example.myandroidapp.ui.theme.TextMuted
+import com.example.myandroidapp.ui.theme.TextPrimary
+import com.example.myandroidapp.ui.theme.TextSecondary
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlinx.coroutines.launch
 
@@ -53,7 +114,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
     LaunchedEffect(Unit) { viewModel.setAppContext(context) }
 
     // Refresh DND permission when returning from settings
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshDndPermission()
@@ -228,7 +289,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.MenuBook, null, tint = PurpleAccent, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = PurpleAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Studying: ${uiState.currentSubject}",
@@ -546,12 +607,12 @@ private fun TimerRing(seconds: Int, totalSeconds: Int, isRunning: Boolean) {
 private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedButton(
             onClick = onReset,
-            modifier = Modifier.height(52.dp).weight(2f),
+            modifier = Modifier.height(52.dp).weight(1f),
             shape = RoundedCornerShape(26.dp),
             border = BorderStroke(1.dp, TextMuted),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
@@ -562,7 +623,7 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
         }
         Button(
             onClick = onToggle,
-            modifier = Modifier.height(52.dp).weight(3f),
+            modifier = Modifier.height(52.dp).weight(1.3f),
             shape = RoundedCornerShape(26.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isRunning) AmberAccent else TealPrimary,
@@ -576,6 +637,7 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DurationSelector(
     selected: Int,
@@ -585,56 +647,41 @@ private fun DurationSelector(
     onCustom: () -> Unit
 ) {
     val presets = listOf(25, 30, 45, 60)
-
-    Column {
-        Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // ── Preset duration chips ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            presets.forEach { min ->
-                val isSelected = selected == min
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { if (!isRunning) onSelect(min) },
-                    label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
+    val chips = presets.map { min ->
+        @Composable {
+            val isSelected = selected == min
+            FilterChip(
+                selected = isSelected,
+                onClick = { if (!isRunning) onSelect(min) },
+                label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
+                enabled = !isRunning,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
+                    selectedLabelColor = TealPrimary,
+                    containerColor = SurfaceCard,
+                    labelColor = TextSecondary
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    selectedBorderColor = TealPrimary,
+                    borderColor = Color.Transparent,
                     enabled = !isRunning,
-                    modifier = Modifier.weight(1f),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
-                        selectedLabelColor = TealPrimary,
-                        containerColor = SurfaceCard,
-                        labelColor = TextSecondary
-                    ),
-                    border = FilterChipDefaults.filterChipBorder(
-                        selectedBorderColor = TealPrimary, borderColor = Color.Transparent,
-                        enabled = !isRunning, selected = isSelected
-                    )
+                    selected = isSelected
                 )
-            }
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // ── Custom duration chip (separate row) ──
+    } + listOf<@Composable () -> Unit>({
         val isCustom = selected == 0
+        val label = if (isCustom) {
+            val h = customMinutes / 60
+            val m = customMinutes % 60
+            if (h > 0) "Custom ${h}h ${m}m" else "Custom ${m}m"
+        } else "Custom"
         FilterChip(
             selected = isCustom,
             onClick = { if (!isRunning) onCustom() },
-            label = {
-                Text(
-                    if (isCustom) {
-                        val h = customMinutes / 60; val m = customMinutes % 60
-                        if (h > 0) "${h}h ${m}m" else "${m}m"
-                    } else "Custom timer",
-                    fontWeight = FontWeight.Medium, fontSize = 13.sp
-                )
-            },
-            enabled = !isRunning,
-            modifier = Modifier.fillMaxWidth(),
+            label = { Text(label) },
             leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) },
+            enabled = !isRunning,
             colors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = PurpleAccent.copy(alpha = 0.2f),
                 selectedLabelColor = PurpleAccent,
@@ -642,17 +689,42 @@ private fun DurationSelector(
                 labelColor = TextSecondary
             ),
             border = FilterChipDefaults.filterChipBorder(
-                selectedBorderColor = PurpleAccent, borderColor = Color.Transparent,
-                enabled = !isRunning, selected = isCustom
+                selectedBorderColor = PurpleAccent,
+                borderColor = Color.Transparent,
+                enabled = !isRunning,
+                selected = isCustom
             )
         )
+    })
+
+    Column {
+        Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+        Spacer(modifier = Modifier.height(10.dp))
+        chips.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                row.forEach { content ->
+                    Box(Modifier.weight(1f)) { content() }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
 @Composable
 private fun AmbientSoundSelector(selected: String, onSelect: (String) -> Unit) {
     data class Sound(val name: String, val icon: String)
-    val sounds = listOf(Sound("Rain", "🌧️"), Sound("Forest", "🌲"), Sound("Lo-fi", "🎵"), Sound("Silence", "🔇"))
+    val sounds = listOf(
+        Sound("Deep Focus", "🎧"),
+        Sound("Calm Piano", "🎹"),
+        Sound("Lo-Fi Beats", "🎵"),
+        Sound("White Noise", "🌊"),
+        Sound("Silence", "🔇")
+    )
 
     Column {
         Text("Ambient Sound", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)

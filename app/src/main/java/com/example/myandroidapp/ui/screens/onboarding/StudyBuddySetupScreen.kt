@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -46,6 +47,7 @@ fun StudyBuddySetupScreen(
     onContinue: () -> Unit
 ) {
     val context = LocalContext.current
+    val adaptive = rememberAdaptiveInfo()
 
     // Background animated blob rotation
     val infiniteTransition = rememberInfiniteTransition(label = "bg")
@@ -97,10 +99,15 @@ fun StudyBuddySetupScreen(
     ) {
         Column(
             modifier = Modifier
+                .then(
+                    if (adaptive.maxContentWidth != androidx.compose.ui.unit.Dp.Unspecified)
+                        Modifier.widthIn(max = adaptive.maxContentWidth)
+                    else Modifier
+                )
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 28.dp)
-                .padding(top = 72.dp, bottom = 48.dp),
+                .padding(horizontal = adaptive.horizontalPadding)
+                .padding(top = if (adaptive.isTablet) 28.dp else 72.dp, bottom = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
@@ -293,6 +300,7 @@ fun StudyBuddySetupScreen(
 // Reusable Step Card
 // ─────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SetupStepCard(
     step: String,
@@ -358,7 +366,10 @@ private fun SetupStepCard(
             // Chips (subfolder names)
             if (!chips.isNullOrEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     chips.forEach { chip ->
                         Box(
                             modifier = Modifier

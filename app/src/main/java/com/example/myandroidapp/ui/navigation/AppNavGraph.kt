@@ -24,12 +24,14 @@ import com.example.myandroidapp.ui.screens.profile.ProfileViewModelFactory
 import com.example.myandroidapp.ui.screens.settings.SettingsScreen
 import com.example.myandroidapp.ui.screens.settings.SettingsViewModel
 import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
+import com.example.myandroidapp.ui.screens.community.CommunityScreen
+import com.example.myandroidapp.ui.screens.community.CommunityViewModel
+import com.example.myandroidapp.ui.screens.community.CommunityViewModelFactory
 
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
     repository: StudyRepository,
-    // FocusViewModel hoisted to allow nav bar to read its state
     focusViewModel: FocusViewModel
 ) {
     val context = LocalContext.current
@@ -48,7 +50,6 @@ fun AppNavGraph(
             )
         }
         composable(Screen.Focus.route) {
-            // Use the hoisted vm — same instance shared with MainActivity
             FocusScreen(viewModel = focusViewModel)
         }
         composable(Screen.Library.route) {
@@ -58,6 +59,10 @@ fun AppNavGraph(
         composable(Screen.AiChat.route) {
             val vm: AiChatViewModel = viewModel()
             AiChatScreen(viewModel = vm)
+        }
+        composable(Screen.Community.route) {
+            val vm: CommunityViewModel = viewModel(factory = CommunityViewModelFactory(app.communityRepository, context))
+            CommunityScreen(viewModel = vm)
         }
         composable(Screen.Settings.route) {
             val vm: SettingsViewModel = viewModel(
@@ -73,8 +78,7 @@ fun AppNavGraph(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
-                onNavigateToInterface = { navController.navigate(Screen.InterfaceSettings.route) },
-                onNavigateToCommunity = { navController.navigate(Screen.Community.route) }
+                onNavigateToInterface = { navController.navigate(Screen.InterfaceSettings.route) }
             )
         }
         composable(Screen.Profile.route) {
@@ -82,13 +86,7 @@ fun AppNavGraph(
             ProfileScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
         composable(Screen.InterfaceSettings.route) {
-            // we will create InterfaceSettingsScreen shortly
             com.example.myandroidapp.ui.screens.settings.InterfaceSettingsScreen(onBack = { navController.popBackStack() })
-        }
-        composable(Screen.Community.route) {
-            // we will create CommunityScreen shortly
-            com.example.myandroidapp.ui.screens.community.CommunityScreen(onBack = { navController.popBackStack() })
         }
     }
 }
-

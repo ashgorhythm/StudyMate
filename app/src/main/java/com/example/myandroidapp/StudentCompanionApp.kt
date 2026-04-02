@@ -3,6 +3,7 @@ package com.example.myandroidapp
 import android.app.Application
 import com.example.myandroidapp.data.local.AppDatabase
 import com.example.myandroidapp.data.repository.StudyRepository
+import com.example.myandroidapp.data.repository.CommunityRepository
 import com.example.myandroidapp.service.TaskReminderManager
 
 class StudentCompanionApp : Application() {
@@ -16,6 +17,10 @@ class StudentCompanionApp : Application() {
             sessionDao = database.studySessionDao(),
             fileDao = database.studyFileDao()
         )
+    }
+
+    val communityRepository: CommunityRepository by lazy {
+        CommunityRepository(database.communityDao())
     }
 
     override fun onCreate() {

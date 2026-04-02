@@ -235,11 +235,11 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
     return when (screen) {
         Screen.Dashboard -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         Screen.Focus -> if (selected) Icons.Filled.Timer else Icons.Outlined.Timer
+        Screen.Community -> if (selected) Icons.Filled.Forum else Icons.Outlined.Forum
         Screen.Library -> if (selected) Icons.Filled.LibraryBooks else Icons.Outlined.LibraryBooks
         Screen.AiChat -> if (selected) Icons.Filled.SmartToy else Icons.Outlined.SmartToy
         Screen.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
         Screen.Profile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
         Screen.InterfaceSettings -> if (selected) Icons.Filled.Palette else Icons.Outlined.Palette
-        Screen.Community -> if (selected) Icons.Filled.Groups else Icons.Outlined.Groups
     }
 }

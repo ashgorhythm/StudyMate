@@ -37,12 +37,13 @@ import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.core.graphics.toColorInt
 
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToProfile: () -> Unit = {}
+    onNavigateToProfile: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
@@ -173,7 +174,7 @@ private fun TabletDashboard(
     viewModel: DashboardViewModel,
     hPadding: androidx.compose.ui.unit.Dp,
     ringSize: androidx.compose.ui.unit.Dp,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -300,6 +301,12 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
         ),
         label = "scallopPulse"
     )
+    val starRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
+        label = "profileStarRotation"
+    )
 
     Box(
         modifier = Modifier
@@ -311,6 +318,16 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center
     ) {
+        // Subtle rotating star halo behind the avatar for the requested “round star” accent
+        Icon(
+            Icons.Default.Star,
+            contentDescription = null,
+            tint = TealPrimary.copy(alpha = 0.22f),
+            modifier = Modifier
+                .matchParentSize()
+                .rotate(starRotation)
+        )
+
         // ── Rotating scalloped circle (smooth wavy ring) ──
         Canvas(
             modifier = Modifier
@@ -338,24 +355,20 @@ private fun ProfileAvatarButton(name: String, onClick: () -> Unit) {
                 path = path,
                 brush = Brush.sweepGradient(
                     colors = listOf(
-                        TealPrimary.copy(alpha = 0.7f),
-                        PurpleAccent.copy(alpha = 0.55f),
-                        TealPrimary.copy(alpha = 0.4f),
-                        PurpleAccent.copy(alpha = 0.7f),
-                        TealPrimary.copy(alpha = 0.7f)
+                        TealPrimary.copy(alpha = 0.25f),
+                        PurpleAccent.copy(alpha = 0.2f),
+                        TealPrimary.copy(alpha = 0.25f)
                     )
-                )
+                ),
+                style = Stroke(width = size.minDimension * 0.08f)
             )
         }
 
-        // ── Profile circle ──
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(40.dp)
                 .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(listOf(TealPrimary, PurpleAccent))
-                ),
+                .background(Brush.linearGradient(listOf(TealPrimary, PurpleAccent))),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -377,7 +390,7 @@ private fun DashboardProfileOverlay(
     studentName: String,
     onDismiss: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -1006,7 +1019,7 @@ private fun SubjectProgressSection(subjects: List<Subject>, onAddSubject: () -> 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SubjectCard(subject: Subject, onEdit: () -> Unit, onDelete: () -> Unit) {
-    val color = try { Color(android.graphics.Color.parseColor(subject.colorHex)) } catch (e: Exception) { TealPrimary }
+    val color = try { Color(subject.colorHex.toColorInt()) } catch (e: Exception) { TealPrimary }
     val progress = if (subject.totalTopics > 0) subject.completedTopics.toFloat() / subject.totalTopics else 0f
     val animatedProgress by animateFloatAsState(targetValue = progress, animationSpec = tween(800), label = "sp")
     var showMenu by remember { mutableStateOf(false) }

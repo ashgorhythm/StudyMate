@@ -126,10 +126,16 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd)))
+            .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd))),
+        contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
+                .then(
+                    if (adaptive.maxContentWidth != androidx.compose.ui.unit.Dp.Unspecified)
+                        Modifier.widthIn(max = adaptive.maxContentWidth)
+                    else Modifier
+                )
                 .fillMaxSize()
                 .padding(horizontal = adaptive.horizontalPadding)
                 .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = if (adaptive.isTablet) 16.dp else 100.dp)
@@ -412,7 +418,7 @@ private fun FileListItem(
         border = BorderStroke(1.dp, tc.copy(0.1f))
     ) {
         Row(
-            Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+            Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -457,8 +463,8 @@ private fun FileOptionsMenu(
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier) {
-        IconButton(onClick = { expanded = true }, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(18.dp))
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.MoreVert, "Options", tint = TextMuted, modifier = Modifier.size(20.dp))
         }
         DropdownMenu(
             expanded = expanded,

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,25 +23,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InterfaceSettingsScreen(onBack: () -> Unit) {
     val adaptive = rememberAdaptiveInfo()
+    val context = LocalContext.current
+    val prefs = remember { UserPreferences(context) }
+    val scope = rememberCoroutineScope()
 
-    var themeMode by remember { mutableStateOf("System") } // System, Light, Dark
-    var reduceAnimations by remember { mutableStateOf(false) }
-    var accentColor by remember { mutableStateOf(TealPrimary) }
-    var textScale by remember { mutableStateOf(1f) }
+    // Load persisted state
+    val themeMode by prefs.themeMode.collectAsState(initial = "System")
+    val reduceAnimations by prefs.reduceAnimations.collectAsState(initial = false)
+    val accentColorHex by prefs.accentColorHex.collectAsState(initial = "#13ECEC")
+    val textScale by prefs.textScale.collectAsState(initial = 1f)
+
+    val accentColor = remember(accentColorHex) {
+        try { Color(android.graphics.Color.parseColor(accentColorHex)) } catch (_: Exception) { TealPrimary }
+    }
+
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
-        containerColor = Color.Transparent
+        containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { contentPadding ->
         Box(
             modifier = Modifier
@@ -70,8 +87,12 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(32.dp))
 
-                // Theme Mode
+                // ═══════════════════════════════════════
+                // ── Theme Mode ──
+                // ═══════════════════════════════════════
                 Text("Theme Mode", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(4.dp))
+                Text("Choose your preferred appearance", fontSize = 12.sp, color = TextMuted)
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     val modes = listOf("System", "Light", "Dark")
@@ -80,15 +101,25 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                         ChoiceChip(
                             label = mode,
                             selected = selected,
-                            onClick = { themeMode = mode },
+                            onClick = {
+                                scope.launch {
+                                    prefs.updateThemeMode(mode)
+                                    snackbarHostState.showSnackbar("Theme set to $mode")
+                                }
+                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
 
                 Spacer(Modifier.height(32.dp))
-                // Accent Color
+
+                // ═══════════════════════════════════════
+                // ── Accent Color ──
+                // ═══════════════════════════════════════
                 Text("Accent Color", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(4.dp))
+                Text("Customize the app's primary accent color", fontSize = 12.sp, color = TextMuted)
                 Spacer(Modifier.height(12.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -96,43 +127,100 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                     colors = CardDefaults.cardColors(containerColor = SurfaceCard),
                     border = BorderStroke(1.dp, TealPrimary.copy(0.12f))
                 ) {
-                    Row(
-                        Modifier.padding(20.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        listOf(TealPrimary, PurpleAccent, AmberAccent, PinkAccent, GreenSuccess).forEach { color ->
-                            ColorCircle(color, selected = accentColor == color, onClick = { accentColor = color })
+                    Column(Modifier.padding(20.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround
+                        ) {
+                            val colorOptions = listOf(
+                                TealPrimary to "#13ECEC",
+                                PurpleAccent to "#7C4DFF",
+                                AmberAccent to "#FFAB40",
+                                PinkAccent to "#FF4081",
+                                GreenSuccess to "#69F0AE"
+                            )
+                            colorOptions.forEach { (color, hex) ->
+                                ColorCircle(
+                                    color = color,
+                                    selected = accentColorHex == hex,
+                                    onClick = {
+                                        scope.launch {
+                                            prefs.updateAccentColor(hex)
+                                            snackbarHostState.showSnackbar("Accent color updated")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        // Current accent preview
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(accentColor)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Current: $accentColorHex",
+                                fontSize = 12.sp,
+                                color = TextMuted
+                            )
                         }
                     }
                 }
 
                 Spacer(Modifier.height(32.dp))
-                // Layout & Typography
+
+                // ═══════════════════════════════════════
+                // ── Text Scale ──
+                // ═══════════════════════════════════════
                 Text("Layout & Typography", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(4.dp))
+                Text("Adjust the app's font size and layout", fontSize = 12.sp, color = TextMuted)
                 Spacer(Modifier.height(12.dp))
                 SettingsToggleCard(
                     title = "Text Size Scale",
-                    subtitle = "Adjust the app's overall font size",
+                    subtitle = "Current: ${String.format("%.0f%%", textScale * 100)}",
                     icon = Icons.Default.FormatSize,
                     accentColor = PurpleAccent,
                     content = {
-                        Slider(
-                            value = textScale,
-                            onValueChange = { textScale = it },
-                            valueRange = 0.8f..1.3f,
-                            steps = 4,
-                            colors = SliderDefaults.colors(
-                                thumbColor = TealPrimary,
-                                activeTrackColor = TealPrimary,
-                                inactiveTrackColor = NavyLight
+                        Column {
+                            Slider(
+                                value = textScale,
+                                onValueChange = { newScale ->
+                                    scope.launch { prefs.updateTextScale(newScale) }
+                                },
+                                valueRange = 0.8f..1.3f,
+                                steps = 4,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = TealPrimary,
+                                    activeTrackColor = TealPrimary,
+                                    inactiveTrackColor = NavyLight
+                                )
                             )
-                        )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Small", fontSize = 11.sp, color = TextMuted)
+                                Text("Default", fontSize = 11.sp, color = if (textScale == 1.0f) TealPrimary else TextMuted)
+                                Text("Large", fontSize = 11.sp, color = TextMuted)
+                            }
+                        }
                     }
                 )
 
                 Spacer(Modifier.height(32.dp))
-                // Motion & Animations
+
+                // ═══════════════════════════════════════
+                // ── Motion ──
+                // ═══════════════════════════════════════
                 Text("Motion", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(4.dp))
+                Text("Control animations and transitions", fontSize = 12.sp, color = TextMuted)
                 Spacer(Modifier.height(12.dp))
                 SettingsToggleCard(
                     title = "Reduce Animations",
@@ -142,7 +230,9 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                     trailing = {
                         Switch(
                             checked = reduceAnimations,
-                            onCheckedChange = { reduceAnimations = it },
+                            onCheckedChange = { newValue ->
+                                scope.launch { prefs.updateReduceAnimations(newValue) }
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = NavyDark,
                                 checkedTrackColor = TealPrimary,
@@ -152,6 +242,36 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                         )
                     }
                 )
+
+                Spacer(Modifier.height(32.dp))
+
+                // ── Reset ──
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            scope.launch {
+                                prefs.updateThemeMode("System")
+                                prefs.updateAccentColor("#13ECEC")
+                                prefs.updateTextScale(1.0f)
+                                prefs.updateReduceAnimations(false)
+                                snackbarHostState.showSnackbar("Settings reset to defaults")
+                            }
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(SurfaceCard),
+                    border = BorderStroke(1.dp, TextMuted.copy(0.15f))
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.Refresh, null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reset to Defaults", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextMuted)
+                    }
+                }
             }
         }
     }
@@ -178,7 +298,7 @@ private fun ColorCircle(color: Color, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(44.dp)
-            .clip(androidx.compose.foundation.shape.CircleShape)
+            .clip(CircleShape)
             .background(color)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center

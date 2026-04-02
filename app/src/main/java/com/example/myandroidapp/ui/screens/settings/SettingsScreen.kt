@@ -1,5 +1,8 @@
 package com.example.myandroidapp.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -17,7 +20,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,6 +34,14 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
+import androidx.core.net.toUri
+
+private enum class SettingsSection {
+    DataBackup,
+    SecurityFocus,
+    PrivacyPolicy,
+    FeedbackBeta
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +50,10 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToProfile: () -> Unit = {},
     onNavigateToInterface: () -> Unit = {},
-    onNavigateToCommunity: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
+    val context = LocalContext.current
 
     // SAF launchers
     val exportLauncher = rememberLauncherForActivityResult(
@@ -54,9 +68,15 @@ fun SettingsScreen(
         uri?.let { viewModel.importFromUri(it) }
     }
 
+    // CSV Export launcher
+    val csvExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        uri?.let { viewModel.exportToCsv(it) }
+    }
+
     // Google Sign-In
-    var authAction by remember { mutableStateOf<String?>(null) } // "upload" or "download"
-    val context = androidx.compose.ui.platform.LocalContext.current
+    var authAction by remember { mutableStateOf<String?>(null) }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -70,9 +90,7 @@ fun SettingsScreen(
                 } else if (authAction == "download") {
                     viewModel.downloadFromGoogleDrive(account)
                 }
-            } catch (e: Exception) {
-                // handle failure silently or via toast
-            }
+            } catch (_: Exception) { }
         }
     }
 
@@ -90,10 +108,18 @@ fun SettingsScreen(
     var showNameDialog by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
     var showImportConfirm by remember { mutableStateOf(false) }
-    var showDataBackup by remember { mutableStateOf(false) }
     var showProfileOverlay by remember { mutableStateOf(false) }
+    var currentSection by remember { mutableStateOf<SettingsSection?>(null) }
+    var showClearDataConfirm by remember { mutableStateOf(false) }
+    var showDeleteDataDialog by remember { mutableStateOf(false) }
+    var showBetaDialog by remember { mutableStateOf(false) }
+    var showBackupHistory by remember { mutableStateOf(false) }
 
-    // Dialogs
+    // ═══════════════════════════════════════
+    // ── Dialogs ──
+    // ═══════════════════════════════════════
+
+    // Name dialog
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
@@ -125,6 +151,7 @@ fun SettingsScreen(
         )
     }
 
+    // Import confirm dialog
     if (showImportConfirm) {
         AlertDialog(
             onDismissRequest = { showImportConfirm = false },
@@ -148,6 +175,199 @@ fun SettingsScreen(
         )
     }
 
+    // Clear all data confirm dialog
+    if (showClearDataConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearDataConfirm = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = RedError, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Delete All Data?", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "This will permanently delete ALL your study data including:",
+                        color = TextSecondary, fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    listOf("• All tasks", "• All subjects", "• All study sessions", "• All file metadata", "• Your student name & settings").forEach {
+                        Text(it, color = RedError.copy(0.8f), fontSize = 13.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("⚠️ This action CANNOT be undone!", color = RedError, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearDataConfirm = false
+                        viewModel.clearAllData()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RedError, contentColor = Color.White),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.DeleteForever, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete Everything", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDataConfirm = false }) { Text("Cancel", color = TextMuted) }
+            },
+            containerColor = NavyMedium, shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Data deletion request dialog
+    if (showDeleteDataDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDataDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DeleteSweep, null, tint = RedError, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Data Deletion", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "StudyMate stores all your data locally on this device. No data is sent to external servers.",
+                        color = TextSecondary, fontSize = 14.sp
+                    )
+                    Text("To delete all local data:", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("1. Go to Data & Backup → Clear All Data\n2. Or uninstall the app from your device", color = TextSecondary, fontSize = 13.sp)
+                    Text(
+                        "If you've backed up to Google Drive, you must also manually delete the backup file from your Drive.",
+                        color = TextSecondary, fontSize = 13.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDataDialog = false
+                    currentSection = SettingsSection.DataBackup
+                }) { Text("Go to Data & Backup", color = TealPrimary, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDataDialog = false }) { Text("Close", color = TextMuted) }
+            },
+            containerColor = NavyMedium, shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Beta enrollment dialog
+    if (showBetaDialog) {
+        AlertDialog(
+            onDismissRequest = { showBetaDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Science, null, tint = AmberAccent, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (uiState.betaEnrolled) "Leave Beta?" else "Join Beta Program",
+                        color = TextPrimary, fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                if (uiState.betaEnrolled) {
+                    Text(
+                        "You're currently a beta tester. Leaving the beta program will remove your access to upcoming features.",
+                        color = TextSecondary, fontSize = 14.sp
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("As a beta tester, you'll get:", color = TextSecondary, fontSize = 14.sp)
+                        listOf(
+                            "🚀 Early access to new features",
+                            "🐛 Help us identify and fix bugs",
+                            "💡 Shape the future of StudyMate",
+                            "🏆 Exclusive beta tester badge"
+                        ).forEach {
+                            Text(it, color = TextPrimary, fontSize = 13.sp)
+                        }
+                        Text("Note: Beta features may be unstable.", color = TextMuted, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.toggleBetaEnrollment()
+                        showBetaDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.betaEnrolled) RedError else AmberAccent,
+                        contentColor = NavyDark
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        if (uiState.betaEnrolled) "Leave Beta" else "Join Beta",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBetaDialog = false }) { Text("Cancel", color = TextMuted) }
+            },
+            containerColor = NavyMedium, shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Backup History Dialog
+    if (showBackupHistory) {
+        AlertDialog(
+            onDismissRequest = { showBackupHistory = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.History, null, tint = TextSecondary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Backup History", color = TextPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                if (uiState.backupHistory.isEmpty()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text("📋", fontSize = 36.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("No backup history yet", color = TextSecondary, fontSize = 14.sp)
+                        Text("Create a backup to see it here", color = TextMuted, fontSize = 12.sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        uiState.backupHistory.takeLast(10).reversed().forEach { entry ->
+                            Card(
+                                Modifier.fillMaxWidth(),
+                                RoundedCornerShape(12.dp),
+                                CardDefaults.cardColors(SurfaceCard)
+                            ) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (entry.contains("Export") || entry.contains("Upload")) Icons.Default.CloudUpload else Icons.Default.CloudDownload,
+                                        null,
+                                        tint = if (entry.contains("Export") || entry.contains("Upload")) TealPrimary else PurpleAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(entry, fontSize = 12.sp, color = TextSecondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBackupHistory = false }) { Text("Close", color = TealPrimary) }
+            },
+            containerColor = NavyMedium, shape = RoundedCornerShape(20.dp)
+        )
+    }
+
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.exportSuccess) {
@@ -165,6 +385,12 @@ fun SettingsScreen(
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { msg ->
             snackbarHostState.showSnackbar("❌ $msg")
+            viewModel.clearMessages()
+        }
+    }
+    LaunchedEffect(uiState.csvExportSuccess) {
+        if (uiState.csvExportSuccess) {
+            snackbarHostState.showSnackbar("✅ CSV exported successfully!")
             viewModel.clearMessages()
         }
     }
@@ -191,18 +417,33 @@ fun SettingsScreen(
                     .padding(horizontal = adaptive.horizontalPadding)
                     .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = 32.dp)
             ) {
-                if (showDataBackup) {
-                    // ═══════════════════════════════════════
-                    // ── Data & Backup Sub-screen ──
-                    // ═══════════════════════════════════════
-                    DataBackupSection(
-                        uiState = uiState,
-                        onBack = { showDataBackup = false },
-                        onExport = { exportLauncher.launch(BackupService.BACKUP_FILE_NAME) },
-                        onImport = { showImportConfirm = true },
-                        onGoogleDriveUpload = { triggerGoogleSignIn("upload") },
-                        onGoogleDriveDownload = { triggerGoogleSignIn("download") }
-                    )
+                if (currentSection != null) {
+                    when (currentSection!!) {
+                        SettingsSection.DataBackup -> DataBackupSection(
+                            uiState = uiState,
+                            onBack = { currentSection = null },
+                            onExport = { exportLauncher.launch(BackupService.BACKUP_FILE_NAME) },
+                            onImport = { showImportConfirm = true },
+                            onGoogleDriveUpload = { triggerGoogleSignIn("upload") },
+                            onGoogleDriveDownload = { triggerGoogleSignIn("download") },
+                            onCsvExport = { csvExportLauncher.launch("studymate_data.csv") },
+                            onClearAllData = { showClearDataConfirm = true },
+                            onShowHistory = { showBackupHistory = true }
+                        )
+                        SettingsSection.SecurityFocus -> SecurityFocusSection(
+                            viewModel = viewModel,
+                            onBack = { currentSection = null }
+                        )
+                        SettingsSection.PrivacyPolicy -> PrivacyPolicySection(
+                            onBack = { currentSection = null },
+                            onDataDeletion = { showDeleteDataDialog = true }
+                        )
+                        SettingsSection.FeedbackBeta -> FeedbackBetaSection(
+                            onBack = { currentSection = null },
+                            betaEnrolled = uiState.betaEnrolled,
+                            onBetaToggle = { showBetaDialog = true }
+                        )
+                    }
                 } else {
                     // ═══════════════════════════════════════
                     // ── Main Settings ──
@@ -241,7 +482,17 @@ fun SettingsScreen(
                             }
                             Spacer(Modifier.width(16.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(uiState.studentName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(uiState.studentName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                    if (uiState.betaEnrolled) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            Modifier.clip(RoundedCornerShape(4.dp)).background(AmberAccent.copy(0.15f)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("BETA", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = AmberAccent)
+                                        }
+                                    }
+                                }
                                 Text("🔥 ${uiState.streak} day streak", fontSize = 13.sp, color = TextSecondary)
                             }
                             IconButton(onClick = { editName = uiState.studentName; showNameDialog = true }) {
@@ -279,42 +530,44 @@ fun SettingsScreen(
                         title = "Sync & Data Backup",
                         icon = Icons.Default.CloudSync,
                         accentColor = TealPrimary,
-                        onClick = { showDataBackup = true }
+                        onClick = { currentSection = SettingsSection.DataBackup }
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
                         title = "Security & Focus Modes",
                         icon = Icons.Default.Lock,
                         accentColor = AmberAccent,
-                        onClick = { /* TODO */ }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SettingsMenuItem(
-                        title = "University Community",
-                        icon = Icons.Default.Groups,
-                        accentColor = PinkAccent,
-                        onClick = onNavigateToCommunity
+                        onClick = { currentSection = SettingsSection.SecurityFocus }
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
                         title = "Academic Privacy & Policy",
                         icon = Icons.Default.Policy,
                         accentColor = TextSecondary,
-                        onClick = { /* TODO */ }
+                        onClick = { currentSection = SettingsSection.PrivacyPolicy }
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
                         title = "Feedback & Beta",
                         icon = Icons.Default.Feedback,
                         accentColor = GreenSuccess,
-                        onClick = { /* TODO */ }
+                        onClick = { currentSection = SettingsSection.FeedbackBeta }
                     )
                     Spacer(Modifier.height(10.dp))
                     SettingsMenuItem(
                         title = "Share Companion App",
                         icon = Icons.Default.Share,
                         accentColor = TealPrimary,
-                        onClick = { /* TODO */ }
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "Try StudyBuddy - your AI-powered study companion! 📚🎓"
+                                )
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share StudyBuddy"))
+                        }
                     )
                     Spacer(Modifier.height(28.dp))
 
@@ -327,7 +580,17 @@ fun SettingsScreen(
                         CardDefaults.cardColors(SurfaceCard)
                     ) {
                         Column(Modifier.padding(20.dp)) {
-                            Text("StudyMate", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("StudyMate", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
+                                Spacer(Modifier.width(8.dp))
+                                if (uiState.betaEnrolled) {
+                                    Box(
+                                        Modifier.clip(RoundedCornerShape(4.dp)).background(AmberAccent.copy(0.15f)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("BETA", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = AmberAccent)
+                                    }
+                                }
+                            }
                             Text("v1.0.0 • AI-Powered Study Companion", fontSize = 13.sp, color = TextSecondary)
                             Spacer(Modifier.height(8.dp))
                             Text("Your personal study companion with AI-powered learning, focus timer, file management, and smart analytics.", fontSize = 13.sp, color = TextMuted, lineHeight = 18.sp)
@@ -361,7 +624,7 @@ fun SettingsScreen(
 private fun ProfileCardOverlay(
     studentName: String,
     onDismiss: () -> Unit,
-    onManageProfile: () -> Unit
+    onManageProfile: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -373,7 +636,7 @@ private fun ProfileCardOverlay(
         Card(
             modifier = Modifier
                 .widthIn(max = 340.dp)
-                .clickable(enabled = false) { /* consume click */ },
+                .clickable(enabled = false) { },
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = NavyMedium),
             border = BorderStroke(1.dp, TealPrimary.copy(alpha = 0.2f))
@@ -382,7 +645,6 @@ private fun ProfileCardOverlay(
                 Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top row: X (close) and gear pointing to Settings
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -390,14 +652,12 @@ private fun ProfileCardOverlay(
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, "Close", tint = TextMuted, modifier = Modifier.size(20.dp))
                     }
-                    // Gear icon here is just decorative/close since we're already in Settings
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Settings, "Settings", tint = TealPrimary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
 
-                // Avatar
                 Box(
                     Modifier
                         .size(80.dp)
@@ -409,24 +669,13 @@ private fun ProfileCardOverlay(
                         .background(SurfaceCard),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Person,
-                        null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(40.dp)
-                    )
+                    Icon(Icons.Default.Person, null, tint = TextSecondary, modifier = Modifier.size(40.dp))
                 }
                 Spacer(Modifier.height(16.dp))
 
-                Text(
-                    "Hi, $studentName!",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
+                Text("Hi, $studentName!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(20.dp))
 
-                // Primary button
                 Button(
                     onClick = onManageProfile,
                     modifier = Modifier.fillMaxWidth(),
@@ -439,12 +688,7 @@ private fun ProfileCardOverlay(
                 ) {
                     Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Manage Student Profile",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                    Text("Manage Student Profile", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
         }
@@ -452,7 +696,7 @@ private fun ProfileCardOverlay(
 }
 
 // ═══════════════════════════════════════════════════════
-// ── Data & Backup Section ──
+// ── Data & Backup Section (Complete) ──
 // ═══════════════════════════════════════════════════════
 
 @Composable
@@ -462,9 +706,11 @@ private fun DataBackupSection(
     onExport: () -> Unit,
     onImport: () -> Unit,
     onGoogleDriveUpload: () -> Unit,
-    onGoogleDriveDownload: () -> Unit
+    onGoogleDriveDownload: () -> Unit,
+    onCsvExport: () -> Unit,
+    onClearAllData: () -> Unit,
+    onShowHistory: () -> Unit,
 ) {
-    // Header
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
@@ -474,40 +720,30 @@ private fun DataBackupSection(
     }
     Spacer(Modifier.height(24.dp))
 
-    // Cloud Backup (Placeholder for future)
-    SettingsActionCard(
-        title = "Cloud Backup",
-        subtitle = "Sync and restore your study data across devices",
-        icon = Icons.Default.CloudDone,
-        accentColor = TealPrimary,
-        isLoading = false,
-        onClick = { /* TODO: toggle cloud backup */ }
-    )
-    Spacer(Modifier.height(12.dp))
-
-    // Google Drive Backup
+    // Cloud Backup
     SettingsActionCard(
         title = "Google Drive Backup",
         subtitle = "Sync and restore your study data via Google Drive",
-        icon = Icons.Default.CloudUpload,
+        icon = Icons.Default.CloudDone,
         accentColor = TealPrimary,
         isLoading = uiState.isExporting,
         onClick = onGoogleDriveUpload
     )
     Spacer(Modifier.height(12.dp))
 
-    // Restore from Google Drive
     SettingsActionCard(
         title = "Restore from Google Drive",
-        subtitle = "Download and restore latest backup from Google Drive",
+        subtitle = "Download and restore your latest cloud backup",
         icon = Icons.Default.CloudDownload,
         accentColor = TealPrimary,
         isLoading = uiState.isImporting,
         onClick = onGoogleDriveDownload
     )
+    Spacer(Modifier.height(16.dp))
+
+    Text("Local Backup", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
     Spacer(Modifier.height(12.dp))
 
-    // Create Local Backup
     SettingsActionCard(
         title = "Create Local Backup",
         subtitle = "Save backup to device local storage",
@@ -518,7 +754,6 @@ private fun DataBackupSection(
     )
     Spacer(Modifier.height(12.dp))
 
-    // Restore Local Backup
     SettingsActionCard(
         title = "Restore Local Backup",
         subtitle = "Import a previously saved local backup",
@@ -529,36 +764,36 @@ private fun DataBackupSection(
     )
     Spacer(Modifier.height(12.dp))
 
-    // Export to CSV
     SettingsActionCard(
         title = "Export to CSV",
         subtitle = "Export your study data as a CSV spreadsheet",
         icon = Icons.Default.TableChart,
         accentColor = GreenSuccess,
         isLoading = false,
-        onClick = { /* TODO: CSV export */ }
+        onClick = onCsvExport
     )
+    Spacer(Modifier.height(16.dp))
+
+    Text("Data Management", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
     Spacer(Modifier.height(12.dp))
 
-    // Clear all data
     SettingsActionCard(
-        title = "Clear all data",
+        title = "Clear All Data",
         subtitle = "Permanently delete all tasks, subjects, sessions, and files",
         icon = Icons.Default.DeleteForever,
         accentColor = RedError,
         isLoading = false,
-        onClick = { /* TODO: clear all data confirmation */ }
+        onClick = onClearAllData
     )
     Spacer(Modifier.height(12.dp))
 
-    // History
     SettingsActionCard(
-        title = "History",
+        title = "Backup History",
         subtitle = "View past backup and restore operations",
         icon = Icons.Default.History,
         accentColor = TextSecondary,
         isLoading = false,
-        onClick = { /* TODO: backup history */ }
+        onClick = onShowHistory
     )
     Spacer(Modifier.height(28.dp))
 
@@ -569,7 +804,250 @@ private fun DataBackupSection(
 }
 
 // ═══════════════════════════════════════════════════════
-// ── Components ──
+// ── Security & Focus Section (Persisted) ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun SecurityFocusSection(viewModel: SettingsViewModel, onBack: () -> Unit) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Security & Focus Modes", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+    Spacer(Modifier.height(24.dp))
+
+    SettingsToggleCard(
+        title = "Require PIN for app open",
+        subtitle = "Add an extra lock before accessing study data",
+        icon = Icons.Default.Password,
+        accentColor = AmberAccent,
+        checked = uiState.requirePin,
+        onCheckedChange = { viewModel.updateRequirePin(it) }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsToggleCard(
+        title = "Lock app during focus session",
+        subtitle = "Block leaving the timer until session ends",
+        icon = Icons.Default.Lock,
+        accentColor = TealPrimary,
+        checked = uiState.lockDuringFocus,
+        onCheckedChange = { viewModel.updateLockDuringFocus(it) }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsToggleCard(
+        title = "Enable DND during focus",
+        subtitle = "Silence distractions while focus mode runs",
+        icon = Icons.Default.NotificationsOff,
+        accentColor = PurpleAccent,
+        checked = uiState.dndDuringFocus,
+        onCheckedChange = { viewModel.updateDndDuringFocus(it) }
+    )
+
+    Spacer(Modifier.height(24.dp))
+    Card(
+        Modifier.fillMaxWidth(),
+        RoundedCornerShape(12.dp),
+        CardDefaults.cardColors(TealPrimary.copy(0.06f))
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Info, null, tint = TealPrimary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("These settings are saved and will persist across app restarts.", fontSize = 12.sp, color = TextMuted, lineHeight = 16.sp)
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Privacy & Policy Section (Complete) ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun PrivacyPolicySection(onBack: () -> Unit, onDataDeletion: () -> Unit) {
+    val context = LocalContext.current
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Academic Privacy & Policy", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+    Spacer(Modifier.height(24.dp))
+
+    SettingsActionCard(
+        title = "Privacy Policy",
+        subtitle = "Review how your study data is stored and protected",
+        icon = Icons.Default.Shield,
+        accentColor = TealPrimary,
+        isLoading = false,
+        onClick = {
+            val intent = Intent(Intent.ACTION_VIEW, "https://example.com/privacy".toUri())
+            context.startActivity(intent)
+        }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsActionCard(
+        title = "Terms of Use",
+        subtitle = "Read app usage terms and academic disclaimer",
+        icon = Icons.Default.Description,
+        accentColor = PurpleAccent,
+        isLoading = false,
+        onClick = {
+            val intent = Intent(Intent.ACTION_VIEW, "https://example.com/terms".toUri())
+            context.startActivity(intent)
+        }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsActionCard(
+        title = "Data Deletion Request",
+        subtitle = "Get guidance to remove all local app data",
+        icon = Icons.Default.DeleteSweep,
+        accentColor = RedError,
+        isLoading = false,
+        onClick = onDataDeletion
+    )
+
+    Spacer(Modifier.height(24.dp))
+
+    // Data summary card
+    Card(
+        Modifier.fillMaxWidth(),
+        RoundedCornerShape(16.dp),
+        CardDefaults.cardColors(SurfaceCard)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("🔒 Your Privacy", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(8.dp))
+            Text("• All data is stored locally on your device", fontSize = 12.sp, color = TextSecondary)
+            Text("• No personal data is sent to external servers", fontSize = 12.sp, color = TextSecondary)
+            Text("• AI chat uses Gemini API (prompts are not stored)", fontSize = 12.sp, color = TextSecondary)
+            Text("• You can delete all data at any time", fontSize = 12.sp, color = TextSecondary)
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Feedback & Beta Section (Complete) ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun FeedbackBetaSection(
+    onBack: () -> Unit,
+    betaEnrolled: Boolean,
+    onBetaToggle: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("Feedback & Beta", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+    Spacer(Modifier.height(24.dp))
+
+    SettingsActionCard(
+        title = "Send Feedback",
+        subtitle = "Report bugs or suggest features",
+        icon = Icons.Default.Feedback,
+        accentColor = GreenSuccess,
+        isLoading = false,
+        onClick = {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = "mailto:support@studybuddy.app".toUri()
+                putExtra(Intent.EXTRA_SUBJECT, "StudyMate Feedback")
+                putExtra(Intent.EXTRA_TEXT, "Hi StudyMate team,\n\n")
+            }
+            try {
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                Toast.makeText(context, "No email app found", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsActionCard(
+        title = if (betaEnrolled) "Beta Program (Enrolled ✅)" else "Join Beta Program",
+        subtitle = if (betaEnrolled) "You're currently testing upcoming features" else "Try upcoming features and help us improve",
+        icon = Icons.Default.Science,
+        accentColor = if (betaEnrolled) GreenSuccess else AmberAccent,
+        isLoading = false,
+        onClick = onBetaToggle
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsActionCard(
+        title = "Rate this App",
+        subtitle = "Share your experience with StudyMate",
+        icon = Icons.Default.Star,
+        accentColor = PurpleAccent,
+        isLoading = false,
+        onClick = {
+            try {
+                // Try Play Store first
+                val intent = Intent(Intent.ACTION_VIEW, "market://details?id=${context.packageName}".toUri())
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                // Fallback to browser
+                val intent = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=${context.packageName}".toUri())
+                context.startActivity(intent)
+            }
+        }
+    )
+    Spacer(Modifier.height(12.dp))
+
+    SettingsActionCard(
+        title = "Report a Bug",
+        subtitle = "Help us fix issues you've encountered",
+        icon = Icons.Default.BugReport,
+        accentColor = RedError,
+        isLoading = false,
+        onClick = {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = "mailto:bugs@studybuddy.app".toUri()
+                putExtra(Intent.EXTRA_SUBJECT, "StudyMate Bug Report")
+                putExtra(Intent.EXTRA_TEXT, "Bug description:\n\nSteps to reproduce:\n1. \n2. \n3. \n\nExpected behavior:\n\nActual behavior:\n\nDevice info:\n")
+            }
+            try {
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                Toast.makeText(context, "No email app found", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
+    if (betaEnrolled) {
+        Spacer(Modifier.height(20.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            RoundedCornerShape(12.dp),
+            CardDefaults.cardColors(AmberAccent.copy(0.06f)),
+            border = BorderStroke(1.dp, AmberAccent.copy(0.15f))
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🧪", fontSize = 20.sp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Beta Tester", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AmberAccent)
+                    Text("Thank you for helping improve StudyMate!", fontSize = 12.sp, color = TextSecondary)
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Reusable Components ──
 // ═══════════════════════════════════════════════════════
 
 @Composable
@@ -592,7 +1070,7 @@ private fun SettingsMenuItem(
     title: String,
     icon: ImageVector,
     accentColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
@@ -620,7 +1098,7 @@ private fun SettingsMenuItem(
 @Composable
 private fun SettingsActionCard(
     title: String, subtitle: String, icon: ImageVector,
-    accentColor: Color, isLoading: Boolean, onClick: () -> Unit
+    accentColor: Color, isLoading: Boolean, onClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(enabled = !isLoading) { onClick() },
@@ -681,6 +1159,50 @@ private fun StepItem(emoji: String, title: String, desc: String) {
         Column {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
             Text(desc, fontSize = 12.sp, color = TextSecondary, lineHeight = 16.sp)
+        }
+    }
+}
+
+@Composable
+private fun SettingsToggleCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    accentColor: Color,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(SurfaceCard),
+        border = BorderStroke(1.dp, accentColor.copy(0.25f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(accentColor.copy(0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = accentColor, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(subtitle, fontSize = 12.sp, color = TextSecondary, lineHeight = 16.sp)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = NavyDark,
+                    checkedTrackColor = TealPrimary,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = NavyLight
+                )
+            )
         }
     }
 }
