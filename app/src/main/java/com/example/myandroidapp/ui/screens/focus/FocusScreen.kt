@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -261,7 +262,9 @@ fun FocusScreen(viewModel: FocusViewModel) {
                         border = BorderStroke(1.dp, RedError.copy(0.3f))
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
@@ -356,6 +359,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
         }
     }
 }
+
 
 // ─────────────────────────────────────────────────
 // Contact resolution helper
@@ -548,7 +552,9 @@ private fun FocusModeBanner(isActive: Boolean) {
         border = BorderStroke(1.dp, if (isActive) TealPrimary.copy(alpha = 0.5f) else Color.Transparent)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -612,7 +618,9 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
     ) {
         OutlinedButton(
             onClick = onReset,
-            modifier = Modifier.height(52.dp).weight(1f),
+            modifier = Modifier
+                .height(52.dp)
+                .weight(1f),
             shape = RoundedCornerShape(26.dp),
             border = BorderStroke(1.dp, TextMuted),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
@@ -623,7 +631,9 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
         }
         Button(
             onClick = onToggle,
-            modifier = Modifier.height(52.dp).weight(1.3f),
+            modifier = Modifier
+                .height(52.dp)
+                .weight(1.3f),
             shape = RoundedCornerShape(26.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isRunning) AmberAccent else TealPrimary,
@@ -647,74 +657,68 @@ private fun DurationSelector(
     onCustom: () -> Unit
 ) {
     val presets = listOf(25, 30, 45, 60)
-    val chips = presets.map { min ->
-        @Composable {
-            val isSelected = selected == min
-            FilterChip(
-                selected = isSelected,
-                onClick = { if (!isRunning) onSelect(min) },
-                label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
-                enabled = !isRunning,
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
-                    selectedLabelColor = TealPrimary,
-                    containerColor = SurfaceCard,
-                    labelColor = TextSecondary
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    selectedBorderColor = TealPrimary,
-                    borderColor = Color.Transparent,
-                    enabled = !isRunning,
-                    selected = isSelected
-                )
-            )
-        }
-    } + listOf<@Composable () -> Unit>({
-        val isCustom = selected == 0
-        val label = if (isCustom) {
-            val h = customMinutes / 60
-            val m = customMinutes % 60
-            if (h > 0) "Custom ${h}h ${m}m" else "Custom ${m}m"
-        } else "Custom"
-        FilterChip(
-            selected = isCustom,
-            onClick = { if (!isRunning) onCustom() },
-            label = { Text(label) },
-            leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) },
-            enabled = !isRunning,
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = PurpleAccent.copy(alpha = 0.2f),
-                selectedLabelColor = PurpleAccent,
-                containerColor = SurfaceCard,
-                labelColor = TextSecondary
-            ),
-            border = FilterChipDefaults.filterChipBorder(
-                selectedBorderColor = PurpleAccent,
-                borderColor = Color.Transparent,
-                enabled = !isRunning,
-                selected = isCustom
-            )
-        )
-    })
 
     Column {
         Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(10.dp))
-        chips.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { content ->
-                    Box(Modifier.weight(1f)) { content() }
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            presets.forEach { min ->
+                val isSelected = selected == min
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { if (!isRunning) onSelect(min) },
+                    label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
+                    enabled = !isRunning,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
+                        selectedLabelColor = TealPrimary,
+                        containerColor = SurfaceCard,
+                        labelColor = TextSecondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        selectedBorderColor = TealPrimary,
+                        borderColor = Color.Transparent,
+                        enabled = !isRunning,
+                        selected = isSelected
+                    )
+                )
             }
-            Spacer(Modifier.height(8.dp))
+
+            // Custom duration chip
+            val isCustom = selected == 0
+            val customLabel = if (isCustom) {
+                val h = customMinutes / 60
+                val m = customMinutes % 60
+                if (h > 0) "Custom ${h}h ${m}m" else "Custom ${m}m"
+            } else "Custom"
+            FilterChip(
+                selected = isCustom,
+                onClick = { if (!isRunning) onCustom() },
+                label = { Text(customLabel) },
+                leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) },
+                enabled = !isRunning,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PurpleAccent.copy(alpha = 0.2f),
+                    selectedLabelColor = PurpleAccent,
+                    containerColor = SurfaceCard,
+                    labelColor = TextSecondary
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    selectedBorderColor = PurpleAccent,
+                    borderColor = Color.Transparent,
+                    enabled = !isRunning,
+                    selected = isCustom
+                )
+            )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AmbientSoundSelector(selected: String, onSelect: (String) -> Unit) {
     data class Sound(val name: String, val icon: String)
@@ -729,25 +733,39 @@ private fun AmbientSoundSelector(selected: String, onSelect: (String) -> Unit) {
     Column {
         Text("Ambient Sound", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(10.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             sounds.forEach { sound ->
                 val isSelected = selected == sound.name
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Card(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSelect(sound.name) }
-                        .background(if (isSelected) TealPrimary.copy(alpha = 0.15f) else Color.Transparent)
-                        .border(
-                            width = if (isSelected) 1.dp else 0.dp,
-                            color = if (isSelected) TealPrimary.copy(alpha = 0.5f) else Color.Transparent,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onSelect(sound.name) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSelected) TealPrimary.copy(alpha = 0.15f) else SurfaceCard
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) TealPrimary.copy(alpha = 0.5f) else Color.Transparent
+                    )
                 ) {
-                    Text(sound.icon, fontSize = 24.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(sound.name, fontSize = 11.sp, color = if (isSelected) TealPrimary else TextSecondary)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(sound.icon, fontSize = 24.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            sound.name,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) TealPrimary else TextSecondary
+                        )
+                    }
                 }
             }
         }
@@ -762,14 +780,19 @@ private fun TodayStats(sessions: Int, minutes: Int) {
         colors = CardDefaults.cardColors(containerColor = SurfaceCard)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("$sessions", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
                 Text("Sessions Today", fontSize = 12.sp, color = TextSecondary)
             }
-            Box(modifier = Modifier.width(1.dp).height(50.dp).background(TextMuted.copy(alpha = 0.3f)))
+            Box(modifier = Modifier
+                .width(1.dp)
+                .height(50.dp)
+                .background(TextMuted.copy(alpha = 0.3f)))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("${minutes / 60}h ${minutes % 60}m", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = PurpleAccent)
                 Text("Total Focus Time", fontSize = 12.sp, color = TextSecondary)
@@ -777,3 +800,4 @@ private fun TodayStats(sessions: Int, minutes: Int) {
         }
     }
 }
+

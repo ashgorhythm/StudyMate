@@ -5,15 +5,18 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,17 +26,22 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
+import com.example.myandroidapp.util.StudyBuddyFolder
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -48,6 +56,7 @@ fun StudyBuddySetupScreen(
 ) {
     val context = LocalContext.current
     val adaptive = rememberAdaptiveInfo()
+    val scope = rememberCoroutineScope()
 
     // Background animated blob rotation
     val infiniteTransition = rememberInfiniteTransition(label = "bg")
@@ -62,11 +71,25 @@ fun StudyBuddySetupScreen(
         label = "pulse"
     )
 
-    // Check if we already have MANAGE_EXTERNAL_STORAGE on Android 11+
-    val hasFullAccess = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    // Setup states
+    var folderCreated by remember { mutableStateOf(false) }
+    var permissionGranted by remember { mutableStateOf(false) }
+    var isCreating by remember { mutableStateOf(false) }
+    var setupComplete by remember { mutableStateOf(false) }
+    var subfolderCount by remember { mutableStateOf(0) }
+
+    // Check existing state on launch
+    LaunchedEffect(Unit) {
+        val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val folder = File(documentsDir, "StudyBuddy")
+        folderCreated = folder.exists()
+        if (folderCreated) {
+            subfolderCount = folder.listFiles()?.count { it.isDirectory } ?: 0
+        }
+        permissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
         } else true
+        setupComplete = folderCreated && permissionGranted
     }
 
     Box(
@@ -76,9 +99,8 @@ fun StudyBuddySetupScreen(
                 Brush.verticalGradient(listOf(Color(0xFF060915), Color(0xFF0D1225), Color(0xFF060915)))
             )
             .drawBehind {
-                // Animated glowing blobs
                 val cx = size.width / 2f
-                val cy = size.height * 0.3f
+                val cy = size.height * 0.25f
                 val r = size.minDimension * 0.55f
                 listOf(
                     Triple(TealPrimary, 0f, 0.18f),
@@ -107,13 +129,11 @@ fun StudyBuddySetupScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = adaptive.horizontalPadding)
-                .padding(top = if (adaptive.isTablet) 28.dp else 72.dp, bottom = 48.dp),
+                .padding(top = if (adaptive.isTablet) 28.dp else 56.dp, bottom = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
-            // ── Folder Icon with glow ──
+            // ── Large Animated Icon ──
             Box(contentAlignment = Alignment.Center) {
-                // Glow ring
                 Box(
                     modifier = Modifier
                         .size(160.dp)
@@ -121,12 +141,15 @@ fun StudyBuddySetupScreen(
                         .alpha(pulse * 0.8f)
                         .background(
                             Brush.radialGradient(
-                                listOf(TealPrimary.copy(0.7f), PurpleAccent.copy(0.3f), Color.Transparent)
+                                listOf(
+                                    if (setupComplete) GreenSuccess.copy(0.7f) else TealPrimary.copy(0.7f),
+                                    PurpleAccent.copy(0.3f),
+                                    Color.Transparent
+                                )
                             ),
                             CircleShape
                         )
                 )
-                // Glassmorphism card
                 Box(
                     modifier = Modifier
                         .size(120.dp)
@@ -135,127 +158,160 @@ fun StudyBuddySetupScreen(
                         .border(
                             1.5.dp,
                             Brush.linearGradient(
-                                listOf(TealPrimary.copy(0.5f), PurpleAccent.copy(0.3f), Color.White.copy(0.05f))
+                                listOf(
+                                    if (setupComplete) GreenSuccess.copy(0.5f) else TealPrimary.copy(0.5f),
+                                    PurpleAccent.copy(0.3f),
+                                    Color.White.copy(0.05f)
+                                )
                             ),
                             RoundedCornerShape(32.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.FolderSpecial,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(56.dp)
+                    AnimatedContent(
+                        targetState = setupComplete,
+                        transitionSpec = { scaleIn() + fadeIn() togetherWith scaleOut() + fadeOut() },
+                        label = "icon"
+                    ) { complete ->
+                        Icon(
+                            if (complete) Icons.Default.CheckCircle else Icons.Default.FolderSpecial,
+                            contentDescription = null,
+                            tint = if (complete) GreenSuccess else TealPrimary,
+                            modifier = Modifier.size(56.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // ── Title ──
+            AnimatedContent(
+                targetState = setupComplete,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "title"
+            ) { complete ->
+                Text(
+                    if (complete) "You're All Set! 🎉" else "Quick Setup ✨",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (setupComplete) "Your StudyBuddy folder is ready. All your study files will be organized here."
+                else "We'll create a folder to organize your study files. It takes just one tap!",
+                fontSize = 14.sp,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // ── Step Cards (interactive checklist) ──
+            StepChecklistItem(
+                stepNumber = 1,
+                icon = Icons.Default.CreateNewFolder,
+                accentColor = TealPrimary,
+                title = "Create StudyBuddy Folder",
+                description = "Documents → StudyBuddy with subfolders for PDFs, Notes, Images, and Videos",
+                isCompleted = folderCreated,
+                isLoading = isCreating,
+                actionLabel = if (folderCreated) "Created ✓" else "Create Now",
+                onAction = {
+                    if (!folderCreated && !isCreating) {
+                        scope.launch {
+                            isCreating = true
+                            delay(600) // Brief animation
+                            try {
+                                StudyBuddyFolder.getOrCreate(context)
+                                folderCreated = true
+                                subfolderCount = 4
+                                if (permissionGranted) setupComplete = true
+                            } catch (_: Exception) { }
+                            isCreating = false
+                        }
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // Step 2: Permission (only on Android 11+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                StepChecklistItem(
+                    stepNumber = 2,
+                    icon = Icons.Default.Security,
+                    accentColor = PurpleAccent,
+                    title = "Grant File Access",
+                    description = "Allow the app to manage your study files. Your files never leave your device.",
+                    isCompleted = permissionGranted,
+                    actionLabel = if (permissionGranted) "Granted ✓" else "Grant Permission",
+                    onAction = {
+                        if (!permissionGranted) {
+                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                            }
+                        }
+                    }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            // Folder structure preview
+            AnimatedVisibility(
+                visible = folderCreated,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                FolderPreviewCard(subfolderCount)
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Privacy note ──
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(GreenSuccess.copy(0.06f))
+                    .border(1.dp, GreenSuccess.copy(0.15f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Lock, null, tint = GreenSuccess, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("100% Private & Offline", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = GreenSuccess)
+                    Text(
+                        "Your files stay on your device. Nothing is uploaded anywhere.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 16.sp
                     )
                 }
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
 
-            // ── Title ──
-            Text(
-                "One Last Step! 🎉",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextPrimary,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Create your StudyBuddy folder so the app can manage your study files.",
-                fontSize = 15.sp,
-                color = TextSecondary,
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // ── Step 1: Create folder ──
-            SetupStepCard(
-                step = "1",
-                icon = Icons.Default.CreateNewFolder,
-                iconTint = TealPrimary,
-                title = "Create the Folder",
-                body = "Open your file manager and go to:\n\nInternal Storage → Documents\n\nCreate a folder named exactly:",
-                highlight = "StudyBuddy"
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Step 2: Subfolders ──
-            SetupStepCard(
-                step = "2",
-                icon = Icons.Default.AccountTree,
-                iconTint = PurpleAccent,
-                title = "Optional Subfolders",
-                body = "Organize your files by creating sub-folders inside StudyBuddy:",
-                chips = listOf("📄 PDFs", "📝 Notes", "🖼️ Images", "🎬 Videos")
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Step 3: Permission ──
-            SetupStepCard(
-                step = "3",
-                icon = Icons.Default.Security,
-                iconTint = PinkAccent,
-                title = "Grant Full Access",
-                body = "StudyMate needs permission to read & write files in the StudyBuddy folder so you can view, rename, and delete your study materials right from the app.",
-                highlight = null,
-                chips = null,
-                note = "Your files never leave your device."
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // ── Grant Permission Button (Android 11+) ──
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullAccess) {
-                Button(
-                    onClick = {
-                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                        }
-                        try {
-                            context.startActivity(intent)
-                        } catch (_: Exception) {
-                            context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                    contentPadding = PaddingValues()
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.horizontalGradient(listOf(PurpleAccent, PinkAccent)),
-                                RoundedCornerShape(18.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Security, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Grant File Access",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-
-            // ── Continue / Done Button ──
+            // ── Continue Button ──
             Button(
-                onClick = onContinue,
+                onClick = {
+                    // Auto-create folder if user hasn't yet
+                    if (!folderCreated) {
+                        try { StudyBuddyFolder.getOrCreate(context) } catch (_: Exception) { }
+                    }
+                    onContinue()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(58.dp),
@@ -267,130 +323,190 @@ fun StudyBuddySetupScreen(
                     Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.horizontalGradient(listOf(TealPrimary, PurpleAccent.copy(0.8f))),
+                            Brush.horizontalGradient(
+                                if (setupComplete) listOf(GreenSuccess, TealPrimary) else listOf(TealPrimary, PurpleAccent.copy(0.8f))
+                            ),
                             RoundedCornerShape(20.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "I'm Ready – Let's Go!",
+                            if (setupComplete) "Let's Go!" else "Continue Anyway",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Spacer(Modifier.width(8.dp))
-                        Icon(Icons.Default.RocketLaunch, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(
+                            if (setupComplete) Icons.Default.RocketLaunch else Icons.AutoMirrored.Filled.ArrowForward,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "You can always add files to StudyBuddy later from the Library tab.",
-                fontSize = 12.sp,
-                color = TextMuted,
-                textAlign = TextAlign.Center
-            )
+            if (!setupComplete) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "You can set this up later from the Library tab",
+                    fontSize = 11.sp,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────
-// Reusable Step Card
+// Step Checklist Item — Interactive card
 // ─────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SetupStepCard(
-    step: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
+private fun StepChecklistItem(
+    stepNumber: Int,
+    icon: ImageVector,
+    accentColor: Color,
     title: String,
-    body: String,
-    highlight: String? = null,
-    chips: List<String>? = null,
-    note: String? = null
+    description: String,
+    isCompleted: Boolean,
+    isLoading: Boolean = false,
+    actionLabel: String,
+    onAction: () -> Unit
 ) {
+    val bgColor = if (isCompleted) GreenSuccess.copy(0.06f) else accentColor.copy(0.04f)
+    val borderColor = if (isCompleted) GreenSuccess.copy(0.25f) else accentColor.copy(0.15f)
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.04f)),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Brush.linearGradient(listOf(iconTint.copy(0.25f), Color.White.copy(0.05f)))
-        )
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !isCompleted && !isLoading) { onAction() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
     ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Step number badge
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(iconTint.copy(0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(step, color = iconTint, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Status indicator
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isCompleted) GreenSuccess.copy(0.15f)
+                        else accentColor.copy(0.12f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp,
+                        color = accentColor
+                    )
+                } else if (isCompleted) {
+                    Icon(Icons.Default.CheckCircle, null, tint = GreenSuccess, modifier = Modifier.size(28.dp))
+                } else {
+                    Icon(icon, null, tint = accentColor, modifier = Modifier.size(24.dp))
                 }
-                Spacer(Modifier.width(12.dp))
-                Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.width(14.dp))
 
-            Text(body, fontSize = 13.sp, color = TextSecondary, lineHeight = 20.sp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isCompleted) GreenSuccess else TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    description,
+                    fontSize = 12.sp,
+                    color = TextSecondary,
+                    lineHeight = 16.sp
+                )
+            }
 
-            // Highlighted folder name pill
-            if (highlight != null) {
-                Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.width(8.dp))
+
+            if (!isCompleted && !isLoading) {
                 Box(
-                    modifier = Modifier
+                    Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(iconTint.copy(0.1f))
-                        .border(1.dp, iconTint.copy(0.3f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .background(accentColor)
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        highlight,
-                        fontSize = 15.sp,
+                        actionLabel,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = iconTint,
-                        fontFamily = FontFamily.Monospace
+                        color = NavyDark
                     )
                 }
+            } else if (isCompleted) {
+                Text(
+                    actionLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GreenSuccess
+                )
             }
+        }
+    }
+}
 
-            // Chips (subfolder names)
-            if (!chips.isNullOrEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+// ─────────────────────────────────────────────────────────
+// Folder Preview Card — Shows created folder structure
+// ─────────────────────────────────────────────────────────
+
+@Composable
+private fun FolderPreviewCard(subfolderCount: Int) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.04f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, TealPrimary.copy(0.1f))
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FolderOpen, null, tint = TealPrimary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Folder Structure", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            }
+            Spacer(Modifier.height(12.dp))
+
+            // Tree visualization
+            val folders = listOf(
+                Triple("📁", "StudyBuddy", "Root folder"),
+                Triple("📄", "PDFs", "Textbooks, papers"),
+                Triple("📝", "Notes", "Written notes, docs"),
+                Triple("🖼️", "Images", "Screenshots, diagrams"),
+                Triple("🎬", "Videos", "Lectures, tutorials")
+            )
+            folders.forEachIndexed { index, (emoji, name, desc) ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = if (index == 0) 0.dp else 20.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    chips.forEach { chip ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(iconTint.copy(0.08f))
-                                .border(1.dp, iconTint.copy(0.2f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(chip, fontSize = 11.sp, color = iconTint, fontWeight = FontWeight.Medium)
-                        }
+                    if (index > 0) {
+                        Text("└ ", fontSize = 13.sp, color = TextMuted)
                     }
-                }
-            }
-
-            // Privacy note
-            if (note != null) {
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lock, null, tint = GreenSuccess, modifier = Modifier.size(14.dp))
+                    Text(emoji, fontSize = 16.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                     Spacer(Modifier.width(6.dp))
-                    Text(note, fontSize = 11.sp, color = GreenSuccess)
+                    Text("· $desc", fontSize = 11.sp, color = TextMuted)
                 }
             }
         }

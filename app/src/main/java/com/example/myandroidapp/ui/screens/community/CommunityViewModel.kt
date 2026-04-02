@@ -1,33 +1,27 @@
 package com.example.myandroidapp.ui.screens.community
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myandroidapp.data.repository.CommunityRepository
-import com.example.myandroidapp.data.local.PostWithComments
-import com.example.myandroidapp.data.model.CommunityPostEntity
-import com.example.myandroidapp.data.model.CommunityCommentEntity
+import com.example.myandroidapp.data.firebase.FirebaseSocialService
+import com.example.myandroidapp.data.model.*
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.util.ScannedFile
 import com.example.myandroidapp.util.StudyBuddyFolder
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ═══════════════════════════════════════════════════════
-// ── Data Models ──
+// ── UI Data Models ──
 // ═══════════════════════════════════════════════════════
 
 data class CommunityComment(
-    val id: Long = 0,
+    val id: String = "",
     val author: String,
     val body: String,
     val timeAgo: String = "just now",
@@ -36,7 +30,9 @@ data class CommunityComment(
 )
 
 data class CommunityPost(
-    val id: Long,
+    val id: String = "",
+    val communityId: String = "",
+    val authorMemberId: String = "",
     val author: String,
     val authorInitials: String,
     val timeAgo: String,
@@ -48,15 +44,21 @@ data class CommunityPost(
     val isDownvoted: Boolean = false,
     val tag: String = "General",
     val attachment: ScannedFile? = null,
+    val attachmentUri: String? = null,
+    val attachmentName: String? = null,
     val isSaved: Boolean = false,
     val isAwarded: Boolean = false,
     val awardCount: Int = 0
 )
 
+data class CommunityInfo(
+    val entity: CommunityEntity,
+    val memberRole: CommunityRole? = null,
+    val membershipStatus: MembershipStatus? = null
+)
+
 enum class SortMode(val label: String) {
-    HOT("🔥 Hot"),
-    NEW("🆕 New"),
-    TOP("⬆️ Top")
+    HOT("🔥 Hot"), NEW("🆕 New"), TOP("⬆️ Top")
 }
 
 val COMMUNITY_TAGS = listOf(
@@ -71,16 +73,29 @@ data class CommunityUiState(
     val selectedTag: String = "All",
     val searchQuery: String = "",
     val isSearching: Boolean = false,
-    val expandedPostId: Long? = null,
-    val studentName: String = "You"
+    val expandedPostId: String? = null,
+    val studentName: String = "You",
+    val currentMemberId: String = "",
+    val communities: List<CommunityInfo> = emptyList(),
+    val selectedCommunityId: String? = null,
+    val pendingRequests: List<CommunityMemberEntity> = emptyList(),
+    val currentTab: CommunityTab = CommunityTab.FEED,
+    val friends: List<UserProfileEntity> = emptyList(),
+    val incomingFriendRequests: List<Pair<FriendRequestEntity, UserProfileEntity?>> = emptyList(),
+    val chatMessages: List<ChatMessageEntity> = emptyList(),
+    val chatTarget: UserProfileEntity? = null,
+    val unreadCount: Int = 0,
+    val isLoading: Boolean = true
 )
 
+enum class CommunityTab { FEED, COMMUNITIES, FRIENDS }
+
 // ═══════════════════════════════════════════════════════
-// ── ViewModel ──
+// ── ViewModel (Firebase-backed) ──
 // ═══════════════════════════════════════════════════════
 
 class CommunityViewModel(
-    private val repository: CommunityRepository,
+    private val firebase: FirebaseSocialService,
     private val context: Context
 ) : ViewModel() {
 
@@ -89,26 +104,89 @@ class CommunityViewModel(
     private val prefs = UserPreferences(context)
 
     private var allPosts: List<CommunityPost> = emptyList()
+    private var allComments: Map<String, List<CommunityComment>> = emptyMap()
 
     init {
+        // Authenticate and load profile
+        viewModelScope.launch {
+            try {
+                val name = prefs.studentName.first()
+                val profile = firebase.getOrCreateProfile(name.ifBlank { "Student" })
+                _uiState.update { it.copy(
+                    studentName = name.ifBlank { "Student" },
+                    currentMemberId = profile.memberId,
+                    isLoading = false
+                )}
+
+                // Start real-time listeners after auth
+                startListeners()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
+
+        // Listen for name changes
         viewModelScope.launch {
             prefs.studentName.collect { name ->
                 _uiState.update { it.copy(studentName = name) }
             }
         }
-        viewModelScope.launch {
-            repository.observePosts()
-                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-                .collect { posts ->
-                    allPosts = posts.map { it.toUi() }
-                    if (allPosts.isEmpty()) {
-                        seedInitialPosts()
-                    } else {
-                        applyFilters()
-                    }
-                }
-        }
+
         refreshStudyFiles()
+    }
+
+    private fun startListeners() {
+        // Watch posts (real-time from Firestore)
+        viewModelScope.launch {
+            firebase.observePosts().collect { rawPosts ->
+                allPosts = rawPosts.map { it.toUiPost() }
+                if (allPosts.isEmpty()) {
+                    seedInitialData()
+                }
+                applyFilters()
+            }
+        }
+
+        // Watch communities
+        viewModelScope.launch {
+            firebase.observeCommunities().collect { communities ->
+                val memberId = _uiState.value.currentMemberId
+                val infos = communities.map { community ->
+                    val membership = firebase.getMembership(community.communityId, memberId)
+                    CommunityInfo(
+                        entity = community,
+                        memberRole = membership?.role,
+                        membershipStatus = membership?.status
+                    )
+                }
+                _uiState.update { it.copy(communities = infos) }
+            }
+        }
+
+        // Watch friends
+        viewModelScope.launch {
+            val memberId = _uiState.value.currentMemberId
+            if (memberId.isBlank()) return@launch
+            firebase.observeAcceptedFriends(memberId).collect { friendReqs ->
+                val profiles = friendReqs.mapNotNull { req ->
+                    val friendId = if (req.fromMemberId == memberId) req.toMemberId else req.fromMemberId
+                    firebase.getProfile(friendId)
+                }
+                _uiState.update { it.copy(friends = profiles) }
+            }
+        }
+
+        // Watch incoming friend requests
+        viewModelScope.launch {
+            val memberId = _uiState.value.currentMemberId
+            if (memberId.isBlank()) return@launch
+            firebase.observeIncomingRequests(memberId).collect { requests ->
+                val withProfiles = requests.map { req ->
+                    req to firebase.getProfile(req.fromMemberId)
+                }
+                _uiState.update { it.copy(incomingFriendRequests = withProfiles) }
+            }
+        }
     }
 
     fun refreshStudyFiles() {
@@ -118,290 +196,255 @@ class CommunityViewModel(
         }
     }
 
-    fun setSortMode(mode: SortMode) {
-        _uiState.update { it.copy(sortMode = mode) }
-        applyFilters()
-    }
-
-    fun setSelectedTag(tag: String) {
-        _uiState.update { it.copy(selectedTag = tag) }
-        applyFilters()
-    }
-
-    fun setSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
-        applyFilters()
-    }
-
-    fun toggleSearch() {
-        _uiState.update { it.copy(isSearching = !it.isSearching, searchQuery = "") }
-        applyFilters()
-    }
-
-    fun expandPost(postId: Long?) {
-        _uiState.update { it.copy(expandedPostId = postId) }
-    }
+    fun setSortMode(mode: SortMode) { _uiState.update { it.copy(sortMode = mode) }; applyFilters() }
+    fun setSelectedTag(tag: String) { _uiState.update { it.copy(selectedTag = tag) }; applyFilters() }
+    fun setSearchQuery(query: String) { _uiState.update { it.copy(searchQuery = query) }; applyFilters() }
+    fun toggleSearch() { _uiState.update { it.copy(isSearching = !it.isSearching, searchQuery = "") }; applyFilters() }
+    fun expandPost(postId: String?) { _uiState.update { it.copy(expandedPostId = postId) } }
+    fun setTab(tab: CommunityTab) { _uiState.update { it.copy(currentTab = tab) } }
+    fun selectCommunity(communityId: String?) { _uiState.update { it.copy(selectedCommunityId = communityId) }; applyFilters() }
 
     private fun applyFilters() {
         val state = _uiState.value
         var filtered = allPosts
-
-        // Tag filter
-        if (state.selectedTag != "All") {
-            filtered = filtered.filter { it.tag == state.selectedTag }
-        }
-
-        // Search filter
+        if (state.selectedCommunityId != null) filtered = filtered.filter { it.communityId == state.selectedCommunityId }
+        if (state.selectedTag != "All") filtered = filtered.filter { it.tag == state.selectedTag }
         if (state.searchQuery.isNotBlank()) {
             val q = state.searchQuery.lowercase()
-            filtered = filtered.filter {
-                it.title.lowercase().contains(q) ||
-                it.body.lowercase().contains(q) ||
-                it.author.lowercase().contains(q) ||
-                it.tag.lowercase().contains(q)
-            }
+            filtered = filtered.filter { it.title.lowercase().contains(q) || it.body.lowercase().contains(q) || it.author.lowercase().contains(q) }
         }
-
-        // Sort
         filtered = when (state.sortMode) {
             SortMode.HOT -> filtered.sortedByDescending { it.upvotes + it.comments.size * 2 }
             SortMode.NEW -> filtered.sortedByDescending { it.id }
             SortMode.TOP -> filtered.sortedByDescending { it.upvotes }
         }
-
         _uiState.update { it.copy(posts = filtered) }
     }
 
-    fun addPost(title: String, body: String, tag: String, attachment: ScannedFile?) {
-        val name = _uiState.value.studentName
-        val initials = name.take(2).uppercase()
+    // ═══════ Post Actions ═══════
+
+    fun addPost(title: String, body: String, tag: String, attachment: ScannedFile?, attachmentUri: String? = null, attachmentName: String? = null) {
+        val state = _uiState.value
         viewModelScope.launch(Dispatchers.IO) {
+            var finalUri = attachmentUri
+            var finalName = attachmentName
+
+            // Upload attachment to Firebase Storage if URI provided
+            if (attachmentUri != null) {
+                try {
+                    val uri = Uri.parse(attachmentUri)
+                    val name = attachmentName ?: "attachment"
+                    val downloadUrl = firebase.uploadAttachment(uri, name)
+                    finalUri = downloadUrl
+                } catch (_: Exception) { /* keep local URI as fallback */ }
+            }
+
             val entity = CommunityPostEntity(
-                author = name,
-                authorInitials = initials,
+                communityId = state.selectedCommunityId ?: "",
+                authorMemberId = state.currentMemberId,
+                author = state.studentName,
+                authorInitials = state.studentName.take(2).uppercase(),
                 timeAgoLabel = "just now",
-                title = title,
-                body = body,
+                title = title, body = body,
                 tag = tag.ifBlank { "General" },
-                upvotes = 0,
-                attachmentPath = attachment?.absolutePath,
-                attachmentSize = attachment?.size,
-                attachmentSubfolder = attachment?.subfolder
+                attachmentUri = finalUri,
+                attachmentName = finalName
             )
-            repository.addPost(entity)
+            firebase.addPost(entity)
         }
     }
 
-    fun addComment(postId: Long, text: String) {
+    fun addComment(postId: String, text: String) {
         if (text.isBlank()) return
         val name = _uiState.value.studentName
         viewModelScope.launch(Dispatchers.IO) {
-            repository.addComment(
-                CommunityCommentEntity(
-                    postId = postId,
-                    author = name,
-                    authorInitials = name.take(2).uppercase(),
-                    body = text
-                )
-            )
+            firebase.addComment(postId, name, name.take(2).uppercase(), text)
         }
     }
 
-    fun toggleUpvote(postId: Long) {
+    fun toggleUpvote(postId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val current = allPosts.firstOrNull { it.id == postId } ?: return@launch
-            val newUpvotes = if (current.isUpvoted) current.upvotes - 1 else current.upvotes + if (current.isDownvoted) 2 else 1
-            repository.updatePost(
-                CommunityPostEntity(
-                    id = postId,
-                    author = current.author,
-                    authorInitials = current.authorInitials,
-                    timeAgoLabel = current.timeAgo,
-                    title = current.title,
-                    body = current.body,
-                    tag = current.tag,
-                    upvotes = newUpvotes,
-                    isUpvoted = !current.isUpvoted,
-                    isDownvoted = false,
-                    attachmentPath = current.attachment?.absolutePath,
-                    attachmentSize = current.attachment?.size,
-                    attachmentSubfolder = current.attachment?.subfolder
-                )
-            )
+            val post = allPosts.firstOrNull { it.id == postId } ?: return@launch
+            val newVotes = if (post.isUpvoted) post.upvotes - 1 else post.upvotes + if (post.isDownvoted) 2 else 1
+            firebase.updatePost(postId, mapOf("upvotes" to newVotes, "isUpvoted" to !post.isUpvoted, "isDownvoted" to false))
         }
     }
 
-    fun toggleDownvote(postId: Long) {
+    fun toggleDownvote(postId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val current = allPosts.firstOrNull { it.id == postId } ?: return@launch
-            val newUpvotes = if (current.isDownvoted) current.upvotes + 1 else current.upvotes - if (current.isUpvoted) 2 else 1
-            repository.updatePost(
-                CommunityPostEntity(
-                    id = postId,
-                    author = current.author,
-                    authorInitials = current.authorInitials,
-                    timeAgoLabel = current.timeAgo,
-                    title = current.title,
-                    body = current.body,
-                    tag = current.tag,
-                    upvotes = newUpvotes,
-                    isUpvoted = false,
-                    isDownvoted = !current.isDownvoted,
-                    attachmentPath = current.attachment?.absolutePath,
-                    attachmentSize = current.attachment?.size,
-                    attachmentSubfolder = current.attachment?.subfolder
-                )
-            )
+            val post = allPosts.firstOrNull { it.id == postId } ?: return@launch
+            val newVotes = if (post.isDownvoted) post.upvotes + 1 else post.upvotes - if (post.isUpvoted) 2 else 1
+            firebase.updatePost(postId, mapOf("upvotes" to newVotes, "isUpvoted" to false, "isDownvoted" to !post.isDownvoted))
         }
     }
 
-    fun toggleSavePost(postId: Long) {
-        // Toggle saved status in UI (persisted locally in state)
+    fun toggleSavePost(postId: String) {
+        allPosts = allPosts.map { if (it.id == postId) it.copy(isSaved = !it.isSaved) else it }
+        applyFilters()
+    }
+
+    fun toggleAwardPost(postId: String) {
         allPosts = allPosts.map {
-            if (it.id == postId) it.copy(isSaved = !it.isSaved) else it
+            if (it.id == postId) it.copy(isAwarded = !it.isAwarded, awardCount = if (it.isAwarded) it.awardCount - 1 else it.awardCount + 1) else it
         }
         applyFilters()
     }
 
-    fun toggleAwardPost(postId: Long) {
-        allPosts = allPosts.map {
-            if (it.id == postId) it.copy(
-                isAwarded = !it.isAwarded,
-                awardCount = if (it.isAwarded) it.awardCount - 1 else it.awardCount + 1
-            ) else it
+    // ═══════ Community Management ═══════
+
+    fun createCommunity(name: String, description: String, isPublic: Boolean, emoji: String) {
+        val memberId = _uiState.value.currentMemberId
+        viewModelScope.launch(Dispatchers.IO) {
+            val community = CommunityEntity(name = name, description = description, isPublic = isPublic, creatorId = memberId, iconEmoji = emoji.ifBlank { "📚" })
+            firebase.createCommunity(community)
+            firebase.insertMember(CommunityMemberEntity(communityId = community.communityId, memberId = memberId, displayName = _uiState.value.studentName, role = CommunityRole.ADMIN, status = MembershipStatus.APPROVED))
         }
-        applyFilters()
     }
 
-    private fun seedInitialPosts() {
+    fun joinCommunity(communityId: String) {
+        val state = _uiState.value
         viewModelScope.launch(Dispatchers.IO) {
-            val seeds = listOf(
-                CommunityPostEntity(
-                    author = "StudyBot",
-                    authorInitials = "SB",
-                    timeAgoLabel = "2h ago",
-                    title = "Welcome to the University Community! 🎓",
-                    body = "This is your space to share study tips, ask questions, post resources, and connect with fellow students. Create a post using the + button below!\n\n✨ Tips:\n• Use tags to categorize your posts\n• Upvote helpful content\n• Attach files from your StudyBuddy folder\n• Comment and engage with others",
-                    tag = "General",
-                    upvotes = 42
-                ),
-                CommunityPostEntity(
-                    author = "Alex Chen",
-                    authorInitials = "AC",
-                    timeAgoLabel = "4h ago",
-                    title = "Best way to study for finals? 📚",
-                    body = "I have 3 exams next week and feeling overwhelmed. What study techniques work best for you? I've been using the Pomodoro technique with 25-min focus sessions but wondering if there's something better.\n\nMy subjects: Linear Algebra, Organic Chemistry, Data Structures",
-                    tag = "Question",
-                    upvotes = 28
-                ),
-                CommunityPostEntity(
-                    author = "Maya Patel",
-                    authorInitials = "MP",
-                    timeAgoLabel = "6h ago",
-                    title = "Free Calculus Notes — Chapter 1-8 🧮",
-                    body = "Hey everyone! I've compiled my complete calculus notes from this semester. Covers:\n• Limits & Continuity\n• Derivatives & Integrals\n• Series & Sequences\n• Multivariable intro\n\nFeel free to use and share! Drop a comment if you find any errors.",
-                    tag = "Notes",
-                    upvotes = 156
-                ),
-                CommunityPostEntity(
-                    author = "Jordan Kim",
-                    authorInitials = "JK",
-                    timeAgoLabel = "8h ago",
-                    title = "Just finished a 4-hour deep focus session! 🔥",
-                    body = "Used the app's focus timer with ambient rain sounds and the app lock feature. Zero distractions! My productivity was insane. Managed to finish my entire research paper outline.\n\nHere's what worked:\n1. Turned on DND mode\n2. Used 50-min focus / 10-min break cycles\n3. Kept water and snacks ready beforehand\n4. Set clear goals before starting",
-                    tag = "Achievement",
-                    upvotes = 89
-                ),
-                CommunityPostEntity(
-                    author = "Sarah Lee",
-                    authorInitials = "SL",
-                    timeAgoLabel = "12h ago",
-                    title = "Study Group for Computer Science 101?",
-                    body = "Looking for people to form a study group for CS101. We can meet virtually or in the library. Topics I need help with:\n• Recursion\n• Binary trees\n• Graph algorithms\n\nDM me or comment if interested! Planning to meet Tuesdays and Thursdays.",
-                    tag = "Discussion",
-                    upvotes = 34
-                ),
-                CommunityPostEntity(
-                    author = "Dr. Smith",
-                    authorInitials = "DS",
-                    timeAgoLabel = "1d ago",
-                    title = "📌 How to use Active Recall effectively",
-                    body = "Active recall is one of the most evidence-backed study techniques:\n\n1. Close your notes\n2. Try to recall everything from memory\n3. Check what you missed\n4. Repeat\n\nStudies show this is 3x more effective than re-reading! Combine with spaced repetition for maximum retention.\n\nPro tip: Use flashcards or practice problems instead of just highlighting.",
-                    tag = "Study Tips",
-                    upvotes = 213
-                ),
-                CommunityPostEntity(
-                    author = "Mike Rodriguez",
-                    authorInitials = "MR",
-                    timeAgoLabel = "1d ago",
-                    title = "Exam prep checklist I wish I had freshman year",
-                    body = "Sharing my exam prep system that's never failed me:\n\n□ Review syllabus & identify key topics (3 weeks before)\n□ Organize notes by topic (2 weeks before)\n□ Create summary sheets (1 week before)\n□ Practice problems daily (ongoing)\n□ Join/form study group (2 weeks before)\n□ Past exams if available (1 week before)\n□ Self-test (3 days before)\n□ Rest & light review (day before)\n\nGood luck everyone! 💪",
-                    tag = "Exam Prep",
-                    upvotes = 167
-                ),
-                CommunityPostEntity(
-                    author = "Emma Wilson",
-                    authorInitials = "EW",
-                    timeAgoLabel = "2d ago",
-                    title = "Feeling burnt out... any advice? 😞",
-                    body = "I've been studying 10+ hours a day for the past two weeks and I'm completely exhausted. Can barely focus for 20 minutes now. \n\nHow do you all deal with burnout while keeping up with coursework? I feel guilty whenever I take breaks.",
-                    tag = "Help",
-                    upvotes = 76
-                )
-            )
+            val community = firebase.getCommunity(communityId) ?: return@launch
+            val existing = firebase.getMembership(communityId, state.currentMemberId)
+            if (existing != null) return@launch
+            val status = if (community.isPublic) MembershipStatus.APPROVED else MembershipStatus.PENDING
+            firebase.insertMember(CommunityMemberEntity(communityId = communityId, memberId = state.currentMemberId, displayName = state.studentName, role = CommunityRole.MEMBER, status = status))
+        }
+    }
 
-            seeds.forEach { repository.addPost(it) }
+    fun approveMember(communityId: String, memberId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val member = firebase.getMembership(communityId, memberId) ?: return@launch
+            firebase.updateMember(member.copy(status = MembershipStatus.APPROVED))
+        }
+    }
 
-            // Add some seed comments
-            val postIds = repository.observePosts().first().map { it.post.id }
-            if (postIds.size >= 3) {
-                repository.addComment(CommunityCommentEntity(postId = postIds[1], author = "Nina Park", authorInitials = "NP", body = "Spaced repetition + active recall is the combo! Check out Anki for flashcards."))
-                repository.addComment(CommunityCommentEntity(postId = postIds[1], author = "Tom Hayes", authorInitials = "TH", body = "For Organic Chem I recommend drawing reaction mechanisms by hand. Muscle memory helps a lot!"))
-                repository.addComment(CommunityCommentEntity(postId = postIds[2], author = "Lisa Chang", authorInitials = "LC", body = "These notes are amazing, thank you so much! 🙏"))
-                repository.addComment(CommunityCommentEntity(postId = postIds[2], author = "Ryan Scott", authorInitials = "RS", body = "Found a small typo in Chapter 5 — the integral boundary should be from 0 to π, not 0 to 2π."))
-                repository.addComment(CommunityCommentEntity(postId = postIds[3], author = "Jamie Wu", authorInitials = "JW", body = "4 hours straight is impressive! I can barely do 2. The app lock feature is a game changer."))
-                repository.addComment(CommunityCommentEntity(postId = postIds[7], author = "StudyBot", authorInitials = "SB", body = "Remember that taking breaks actually IMPROVES productivity! Try the 52-17 rule: 52 minutes of work, 17 minutes of rest. You deserve breaks! ❤️"))
-                repository.addComment(CommunityCommentEntity(postId = postIds[7], author = "Alex Chen", authorInitials = "AC", body = "I went through the same thing last semester. What helped: 1) Set a hard stop time each day 2) Exercise 3) Sleep 8 hours minimum. Your brain needs rest to form memories!"))
+    fun rejectMember(communityId: String, memberId: String) {
+        viewModelScope.launch(Dispatchers.IO) { firebase.removeMember(communityId, memberId) }
+    }
+
+    fun loadPendingRequests(communityId: String) {
+        viewModelScope.launch {
+            firebase.observePendingMembers(communityId).collect { pending ->
+                _uiState.update { it.copy(pendingRequests = pending) }
             }
         }
     }
 
-    private fun PostWithComments.toUi(): CommunityPost {
-        val attachment = post.attachmentPath?.let {
-            ScannedFile(
-                name = it.substringAfterLast('/'),
-                absolutePath = it,
-                size = post.attachmentSize ?: 0L,
-                lastModified = post.createdAt,
-                type = StudyBuddyFolder.classifyFile(it),
-                subfolder = post.attachmentSubfolder ?: ""
-            )
+    // ═══════ Friend Requests ═══════
+
+    fun sendFriendRequest(toMemberId: String) {
+        viewModelScope.launch(Dispatchers.IO) { firebase.sendFriendRequest(_uiState.value.currentMemberId, toMemberId) }
+    }
+
+    fun acceptFriendRequest(requestId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val docId = firebase.getDocId(requestId) ?: return@launch
+            firebase.updateFriendRequestStatus(docId, "ACCEPTED")
         }
+    }
+
+    fun rejectFriendRequest(requestId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val docId = firebase.getDocId(requestId) ?: return@launch
+            firebase.deleteFriendRequest(docId)
+        }
+    }
+
+    // ═══════ Chat ═══════
+
+    fun openChat(targetProfile: UserProfileEntity) {
+        _uiState.update { it.copy(chatTarget = targetProfile) }
+        viewModelScope.launch {
+            firebase.observeConversation(_uiState.value.currentMemberId, targetProfile.memberId).collect { msgs ->
+                _uiState.update { it.copy(chatMessages = msgs) }
+            }
+        }
+    }
+
+    fun closeChat() { _uiState.update { it.copy(chatTarget = null, chatMessages = emptyList()) } }
+
+    fun sendMessage(text: String) {
+        val target = _uiState.value.chatTarget ?: return
+        if (text.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            firebase.sendMessage(_uiState.value.currentMemberId, target.memberId, text)
+        }
+    }
+
+    // ═══════ File Helper ═══════
+
+    fun getFileInfoFromUri(uri: Uri): Pair<String, Long> {
+        var name = "Attachment"; var size = 0L
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val ni = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val si = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (cursor.moveToFirst()) {
+                    if (ni >= 0) name = cursor.getString(ni) ?: "Attachment"
+                    if (si >= 0) size = cursor.getLong(si)
+                }
+            }
+        } catch (_: Exception) { }
+        return name to size
+    }
+
+    // ═══════ Seeding ═══════
+
+    private fun seedInitialData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val memberId = _uiState.value.currentMemberId
+            val hub = CommunityEntity(name = "University Hub", description = "The main community for all students.", isPublic = true, creatorId = "system", memberCount = 1, iconEmoji = "🎓")
+            firebase.createCommunity(hub)
+
+            val cs = CommunityEntity(name = "CS Study Group", description = "Private group for CS students.", isPublic = false, creatorId = "system", memberCount = 1, iconEmoji = "💻")
+            firebase.createCommunity(cs)
+
+            val exam = CommunityEntity(name = "Exam Warriors", description = "Preparing for exams together!", isPublic = true, creatorId = "system", memberCount = 1, iconEmoji = "⚔️")
+            firebase.createCommunity(exam)
+
+            if (memberId.isNotBlank()) {
+                firebase.insertMember(CommunityMemberEntity(communityId = hub.communityId, memberId = memberId, displayName = _uiState.value.studentName, role = CommunityRole.MEMBER, status = MembershipStatus.APPROVED))
+            }
+
+            // Seed posts
+            listOf(
+                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "StudyBot", authorInitials = "SB", timeAgoLabel = "2h ago", title = "Welcome to the University Community! 🎓", body = "Share tips, ask questions, and connect with fellow students!", tag = "General", upvotes = 42),
+                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Alex Chen", authorInitials = "AC", timeAgoLabel = "4h ago", title = "Best way to study for finals? 📚", body = "I have 3 exams next week. What study techniques work best?", tag = "Question", upvotes = 28),
+                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Maya Patel", authorInitials = "MP", timeAgoLabel = "6h ago", title = "Free Calculus Notes — Chapter 1-8 🧮", body = "Complete calculus notes covering limits, derivatives, integrals, and series.", tag = "Notes", upvotes = 156),
+                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Dr. Smith", authorInitials = "DS", timeAgoLabel = "1d ago", title = "📌 How to use Active Recall effectively", body = "Active recall is 3x more effective than re-reading! Close notes → recall → check → repeat.", tag = "Study Tips", upvotes = 213),
+            ).forEach { firebase.addPost(it) }
+        }
+    }
+
+    private fun Map<String, Any>.toUiPost(): CommunityPost {
         return CommunityPost(
-            id = post.id,
-            author = post.author,
-            authorInitials = post.authorInitials,
-            timeAgo = post.timeAgoLabel,
-            title = post.title,
-            body = post.body,
-            upvotes = post.upvotes,
-            comments = comments.map { CommunityComment(id = it.id, author = it.author, body = it.body, timeAgo = it.timeAgoLabel) },
-            isUpvoted = post.isUpvoted,
-            isDownvoted = post.isDownvoted,
-            tag = post.tag,
-            attachment = attachment
+            id = this["id"] as? String ?: "",
+            communityId = this["communityId"] as? String ?: "",
+            authorMemberId = this["authorMemberId"] as? String ?: "",
+            author = this["author"] as? String ?: "Unknown",
+            authorInitials = this["authorInitials"] as? String ?: "?",
+            timeAgo = this["timeAgoLabel"] as? String ?: "",
+            title = this["title"] as? String ?: "",
+            body = this["body"] as? String ?: "",
+            upvotes = (this["upvotes"] as? Number)?.toInt() ?: 0,
+            isUpvoted = this["isUpvoted"] as? Boolean ?: false,
+            isDownvoted = this["isDownvoted"] as? Boolean ?: false,
+            tag = this["tag"] as? String ?: "General",
+            attachmentUri = (this["attachmentUri"] as? String)?.takeIf { it.isNotBlank() },
+            attachmentName = (this["attachmentName"] as? String)?.takeIf { it.isNotBlank() }
         )
     }
 }
 
 class CommunityViewModelFactory(
-    private val repository: CommunityRepository,
+    private val firebase: FirebaseSocialService,
     private val context: Context
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(CommunityViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return CommunityViewModel(repository, context) as T
+            return CommunityViewModel(firebase, context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

@@ -21,6 +21,10 @@ interface CommunityDao {
     @Query("SELECT * FROM community_posts ORDER BY createdAt DESC")
     fun observePosts(): Flow<List<PostWithComments>>
 
+    @Transaction
+    @Query("SELECT * FROM community_posts WHERE communityId = :communityId ORDER BY createdAt DESC")
+    fun observePostsByCommunity(communityId: String): Flow<List<PostWithComments>>
+
     @Insert
     suspend fun insertPost(entity: CommunityPostEntity): Long
 
@@ -33,4 +37,3 @@ interface CommunityDao {
     @Query("DELETE FROM community_posts")
     suspend fun clearAll()
 }
-

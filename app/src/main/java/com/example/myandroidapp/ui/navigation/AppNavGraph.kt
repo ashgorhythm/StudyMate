@@ -61,7 +61,7 @@ fun AppNavGraph(
             AiChatScreen(viewModel = vm)
         }
         composable(Screen.Community.route) {
-            val vm: CommunityViewModel = viewModel(factory = CommunityViewModelFactory(app.communityRepository, context))
+            val vm: CommunityViewModel = viewModel(factory = CommunityViewModelFactory(app.firebaseSocialService, context))
             CommunityScreen(viewModel = vm)
         }
         composable(Screen.Settings.route) {

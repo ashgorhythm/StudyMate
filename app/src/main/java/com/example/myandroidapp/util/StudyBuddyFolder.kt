@@ -27,7 +27,7 @@ object StudyBuddyFolder {
             folder.mkdirs()
         }
         // Also create sample sub-folders for organization
-        listOf("PDFs", "Notes", "Images", "Videos").forEach {
+        listOf("PDFs", "Images", "Videos").forEach {
             val sub = File(folder, it)
             if (!sub.exists()) sub.mkdirs()
         }
@@ -64,7 +64,7 @@ object StudyBuddyFolder {
         val ext = fileName.substringAfterLast('.', "").lowercase()
         return when (ext) {
             "pdf" -> "PDF"
-            "doc", "docx", "txt", "md", "rtf", "odt" -> "NOTE"
+            "doc", "docx", "txt", "md", "rtf", "odt" -> "OTHER"
             "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg" -> "IMAGE"
             "mp4", "avi", "mkv", "mov", "webm", "3gp" -> "VIDEO"
             else -> "OTHER"

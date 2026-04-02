@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -236,7 +238,7 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
         Screen.Dashboard -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         Screen.Focus -> if (selected) Icons.Filled.Timer else Icons.Outlined.Timer
         Screen.Community -> if (selected) Icons.Filled.Forum else Icons.Outlined.Forum
-        Screen.Library -> if (selected) Icons.Filled.LibraryBooks else Icons.Outlined.LibraryBooks
+        Screen.Library -> if (selected) Icons.AutoMirrored.Filled.LibraryBooks else Icons.AutoMirrored.Outlined.LibraryBooks
         Screen.AiChat -> if (selected) Icons.Filled.SmartToy else Icons.Outlined.SmartToy
         Screen.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
         Screen.Profile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person

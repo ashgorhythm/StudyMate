@@ -105,7 +105,6 @@ class LibraryViewModel(private val repository: StudyRepository) : ViewModel() {
         if (category != "All") {
             val type = when (category) {
                 "PDFs" -> "PDF"
-                "Notes" -> "NOTE"
                 "Images" -> "IMAGE"
                 "Videos" -> "VIDEO"
                 else -> null

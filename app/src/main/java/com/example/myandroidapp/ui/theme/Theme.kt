@@ -45,7 +45,9 @@ fun StudentCompanionTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
+            @Suppress("DEPRECATION")
             window.statusBarColor = NavyDark.toArgb()
+            @Suppress("DEPRECATION")
             window.navigationBarColor = NavyDark.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }

@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.example.myandroidapp.service
 
 import android.content.Context

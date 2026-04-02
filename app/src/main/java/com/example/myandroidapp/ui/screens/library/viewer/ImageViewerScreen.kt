@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.example.myandroidapp.ui.screens.library.viewer
 
 import android.content.Intent

@@ -209,7 +209,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
             Spacer(Modifier.height(12.dp))
 
             // ── Category Filter Chips ──
-            val cats = listOf("All", "PDFs", "Notes", "Images", "Videos")
+            val cats = listOf("All", "PDFs", "Images", "Videos")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 cats.forEach { c ->
                     val sel = uiState.selectedCategory == c
@@ -254,7 +254,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Use sub-folders: PDFs, Notes, Images, Videos",
+                        "Use sub-folders: PDFs, Images, Videos",
                         color = TextMuted, fontSize = 11.sp
                     )
                     Spacer(Modifier.height(20.dp))
@@ -322,7 +322,6 @@ private fun openFileExternally(context: android.content.Context, file: ScannedFi
             "PDF" -> "application/pdf"
             "IMAGE" -> "image/*"
             "VIDEO" -> "video/*"
-            "NOTE" -> "text/*"
             else -> "*/*"
         }
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -497,12 +496,12 @@ private fun FileOptionsMenu(
 // ═══════════════════════════════════════════════════════
 
 private fun fileColor(type: String): Color = when (type) {
-    "PDF" -> RedError; "NOTE" -> AmberAccent; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
+    "PDF" -> RedError; "IMAGE" -> GreenSuccess; "VIDEO" -> PurpleAccent; else -> TextSecondary
 }
 
 @Composable
 private fun fileIcon(type: String) = when (type) {
-    "PDF" -> Icons.Default.PictureAsPdf; "NOTE" -> Icons.Default.Description
+    "PDF" -> Icons.Default.PictureAsPdf
     "IMAGE" -> Icons.Default.Image; "VIDEO" -> Icons.Default.VideoFile; else -> Icons.AutoMirrored.Filled.InsertDriveFile
 }
 

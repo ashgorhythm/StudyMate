@@ -954,6 +954,7 @@ private fun TaskCard(task: StudyTask, onToggle: (Long, Boolean) -> Unit, onEdit:
         "mathematics" -> TealPrimary; "physics" -> PurpleAccent; "english" -> AmberAccent; "history" -> PinkAccent; else -> TextSecondary
     }
     val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+    @Suppress("DEPRECATION")
     val dismissState = rememberSwipeToDismissBoxState(confirmValueChange = { if (it == SwipeToDismissBoxValue.EndToStart) { onDelete(); true } else false })
 
     SwipeToDismissBox(state = dismissState, backgroundContent = {
