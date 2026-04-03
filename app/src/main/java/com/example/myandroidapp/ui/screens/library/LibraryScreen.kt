@@ -27,6 +27,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.ui.screens.library.viewer.FileViewerScreen
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.LocalAccentColor
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import com.example.myandroidapp.util.ScannedFile
 import java.io.File
@@ -43,6 +44,7 @@ fun LibraryScreen(viewModel: LibraryViewModel) {
 
     // In-app file viewer state
     var viewingFile by remember { mutableStateOf<ScannedFile?>(null) }
+    val accent = LocalAccentColor.current
 
     // Show in-app file viewer
     viewingFile?.let { file ->

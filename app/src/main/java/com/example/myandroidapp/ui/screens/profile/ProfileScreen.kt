@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.LocalAccentColor
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -102,7 +103,8 @@ class ProfileViewModelFactory(private val context: android.content.Context) : Vi
 }
 
 // ─────────────────────────────────────────────────────────
-//  Screen
+//  Screen — deduplicated: only avatar click & dialog for photo,
+//  only one name edit via the Profile Details card
 // ─────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,13 +116,13 @@ fun ProfileScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
     val context = LocalContext.current
+    val accent = LocalAccentColor.current
 
     var showNameDialog by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
     var showImageOptions by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -134,7 +136,6 @@ fun ProfileScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            // Persist permission
             try {
                 context.contentResolver.takePersistableUriPermission(
                     it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -157,14 +158,14 @@ fun ProfileScreen(
                         value = editName,
                         onValueChange = { editName = it },
                         placeholder = { Text("Your name", color = TextMuted) },
-                        leadingIcon = { Icon(Icons.Default.Person, null, tint = TealPrimary) },
+                        leadingIcon = { Icon(Icons.Default.Person, null, tint = accent) },
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = TealPrimary,
+                            focusedBorderColor = accent,
                             unfocusedBorderColor = TextMuted.copy(0.3f),
                             focusedContainerColor = NavyDark,
                             unfocusedContainerColor = NavyDark,
-                            cursorColor = TealPrimary,
+                            cursorColor = accent,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
                         ),
@@ -178,7 +179,7 @@ fun ProfileScreen(
                         viewModel.updateName(editName)
                         showNameDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary, contentColor = NavyDark),
+                    colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = NavyDark),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text("Save", fontWeight = FontWeight.Bold) }
             },
@@ -196,7 +197,7 @@ fun ProfileScreen(
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = NavyMedium),
-                border = BorderStroke(1.dp, TealPrimary.copy(0.2f))
+                border = BorderStroke(1.dp, accent.copy(0.2f))
             ) {
                 Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Profile Photo", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -205,7 +206,7 @@ fun ProfileScreen(
                     ImageOptionRow(
                         icon = Icons.Default.PhotoLibrary,
                         label = "Choose from Gallery",
-                        color = TealPrimary
+                        color = accent
                     ) {
                         showImageOptions = false
                         imagePickerLauncher.launch("image/*")
@@ -250,11 +251,14 @@ fun ProfileScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = adaptive.horizontalPadding)
-                    .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = 40.dp)
+                    .padding(top = if (adaptive.isTablet) 24.dp else 0.dp, bottom = 40.dp)
                     .align(Alignment.TopCenter)
             ) {
-                // ── Header ──
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // ── Header — fixed to top ──
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.statusBarsPadding()
+                ) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
                     }
@@ -263,7 +267,7 @@ fun ProfileScreen(
                 }
                 Spacer(Modifier.height(32.dp))
 
-                // ── Avatar section ──
+                // ── Avatar section — single click opens image dialog ──
                 Column(
                     Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -275,26 +279,13 @@ fun ProfileScreen(
                         onClick = { showImageOptions = true }
                     )
                     Spacer(Modifier.height(12.dp))
-                    TextButton(
-                        onClick = { showImageOptions = true },
-                        colors = ButtonDefaults.textButtonColors(contentColor = TealPrimary)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (uiState.profileImageUri != null) "Change Photo" else "Add Photo",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
                     Text(uiState.studentName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Text("Student", fontSize = 13.sp, color = TextMuted)
                 }
 
                 Spacer(Modifier.height(36.dp))
 
-                // ── Profile Info Section ──
+                // ── Profile Info Section — single edit each ──
                 Text("Profile Details", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 Spacer(Modifier.height(14.dp))
 
@@ -302,7 +293,7 @@ fun ProfileScreen(
                     label = "Display Name",
                     value = uiState.studentName,
                     icon = Icons.Default.Person,
-                    accentColor = TealPrimary,
+                    accentColor = accent,
                     onEdit = {
                         editName = uiState.studentName
                         showNameDialog = true
@@ -317,53 +308,14 @@ fun ProfileScreen(
                     accentColor = PurpleAccent,
                     onEdit = { showImageOptions = true }
                 )
-                Spacer(Modifier.height(10.dp))
-
-                // ── Customization Options ──
                 Spacer(Modifier.height(24.dp))
-                Text("Customize", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Spacer(Modifier.height(14.dp))
-
-                ProfileActionItem(
-                    icon = Icons.Default.Edit,
-                    title = "Change Display Name",
-                    subtitle = "Update the name shown on the dashboard",
-                    color = TealPrimary
-                ) {
-                    editName = uiState.studentName
-                    showNameDialog = true
-                }
-                Spacer(Modifier.height(10.dp))
-
-                ProfileActionItem(
-                    icon = Icons.Default.PhotoCamera,
-                    title = "Update Profile Picture",
-                    subtitle = "Choose a photo from your gallery",
-                    color = PurpleAccent
-                ) {
-                    showImageOptions = true
-                }
-                Spacer(Modifier.height(10.dp))
-
-                if (uiState.profileImageUri != null) {
-                    ProfileActionItem(
-                        icon = Icons.Default.PersonOff,
-                        title = "Remove Profile Picture",
-                        subtitle = "Revert to initials-based avatar",
-                        color = RedError
-                    ) {
-                        viewModel.clearProfileImage()
-                    }
-                    Spacer(Modifier.height(10.dp))
-                }
 
                 // ── Stats card ──
-                Spacer(Modifier.height(24.dp))
                 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                    border = BorderStroke(1.dp, TealPrimary.copy(0.12f))
+                    border = BorderStroke(1.dp, accent.copy(0.12f))
                 ) {
                     Row(
                         Modifier.padding(20.dp),
@@ -556,45 +508,6 @@ private fun ProfileInfoCard(
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, "Edit", tint = accentColor, modifier = Modifier.size(18.dp))
             }
-        }
-    }
-}
-
-@Composable
-private fun ProfileActionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    color: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-        border = BorderStroke(1.dp, color.copy(0.15f))
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(color.copy(0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                Text(subtitle, fontSize = 12.sp, color = TextSecondary, lineHeight = 16.sp)
-            }
-            Icon(Icons.Default.ChevronRight, null, tint = TextMuted.copy(0.5f))
         }
     }
 }

@@ -43,7 +43,9 @@ data class SettingsUiState(
     // CSV
     val csvExportSuccess: Boolean = false,
     // Backup history
-    val backupHistory: List<String> = emptyList()
+    val backupHistory: List<String> = emptyList(),
+    // Feedback
+    val feedbackSent: Boolean = false
 )
 
 class SettingsViewModel(
@@ -273,49 +275,83 @@ class SettingsViewModel(
     // ── Google Drive ──
 
     fun uploadToGoogleDrive(account: GoogleSignInAccount) {
+        android.util.Log.d("SettingsVM", "uploadToGoogleDrive: account=${account.email}")
         _uiState.update { it.copy(isExporting = true, exportSuccess = false, errorMessage = null) }
         viewModelScope.launch {
             try {
+                android.util.Log.d("SettingsVM", "Exporting data to JSON...")
                 val jsonContent = backupService.exportToJson(context)
+                android.util.Log.d("SettingsVM", "JSON exported (${jsonContent.length} chars), creating DriveService...")
+
                 val driveService = GoogleDriveService(context, account)
+                android.util.Log.d("SettingsVM", "DriveService created, uploading...")
                 val result = driveService.uploadBackup(jsonContent)
 
                 if (result.isSuccess) {
+                    android.util.Log.i("SettingsVM", "Upload SUCCESS")
                     _uiState.update { it.copy(isExporting = false, exportSuccess = true, errorMessage = null) }
-                    addBackupHistoryEntry("Upload: Google Drive backup")
+                    addBackupHistoryEntry("Upload: Google Drive backup (${account.email})")
                 } else {
-                    _uiState.update { it.copy(isExporting = false, errorMessage = "Drive upload failed: ${result.exceptionOrNull()?.message}") }
+                    val errorMsg = result.exceptionOrNull()?.message ?: "Unknown error"
+                    android.util.Log.e("SettingsVM", "Upload FAILED: $errorMsg")
+                    _uiState.update { it.copy(isExporting = false, errorMessage = errorMsg) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isExporting = false, errorMessage = "Drive upload error: ${e.message}") }
+                android.util.Log.e("SettingsVM", "Upload exception", e)
+                _uiState.update { it.copy(isExporting = false, errorMessage = "Drive upload error: ${e.localizedMessage ?: e.javaClass.simpleName}") }
             }
         }
     }
 
     fun downloadFromGoogleDrive(account: GoogleSignInAccount) {
+        android.util.Log.d("SettingsVM", "downloadFromGoogleDrive: account=${account.email}")
         _uiState.update { it.copy(isImporting = true, importResult = null, errorMessage = null) }
         viewModelScope.launch {
             try {
                 val driveService = GoogleDriveService(context, account)
+                android.util.Log.d("SettingsVM", "DriveService created, downloading...")
                 val downloadResult = driveService.downloadBackup()
 
                 if (downloadResult.isSuccess) {
                     val jsonContent = downloadResult.getOrThrow()
+                    android.util.Log.d("SettingsVM", "Downloaded ${jsonContent.length} chars, importing...")
                     val importResult = backupService.importFromJson(context, jsonContent)
+                    android.util.Log.i("SettingsVM", "Restore SUCCESS: ${importResult.totalItems} items")
                     _uiState.update { it.copy(isImporting = false, importResult = importResult, errorMessage = null) }
                     addBackupHistoryEntry("Download: Restored from Google Drive (${importResult.totalItems} items)")
                     loadData()
                 } else {
-                    _uiState.update { it.copy(isImporting = false, errorMessage = "Drive download failed: ${downloadResult.exceptionOrNull()?.message}") }
+                    val errorMsg = downloadResult.exceptionOrNull()?.message ?: "Unknown error"
+                    android.util.Log.e("SettingsVM", "Download FAILED: $errorMsg")
+                    _uiState.update { it.copy(isImporting = false, errorMessage = errorMsg) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isImporting = false, errorMessage = "Drive download error: ${e.message}") }
+                android.util.Log.e("SettingsVM", "Download exception", e)
+                _uiState.update { it.copy(isImporting = false, errorMessage = "Drive download error: ${e.localizedMessage ?: e.javaClass.simpleName}") }
             }
         }
     }
 
     fun clearMessages() {
-        _uiState.update { it.copy(exportSuccess = false, importResult = null, errorMessage = null, csvExportSuccess = false) }
+        _uiState.update { it.copy(exportSuccess = false, importResult = null, errorMessage = null, csvExportSuccess = false, feedbackSent = false) }
+    }
+
+    // ── Feedback ──
+
+    fun submitFeedback(type: String, message: String) {
+        viewModelScope.launch {
+            try {
+                // Store feedback locally (can be synced to Firebase later)
+                val feedbackPrefs = context.getSharedPreferences("feedback_prefs", Context.MODE_PRIVATE)
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val existingFeedback = feedbackPrefs.getString("feedback_log", "") ?: ""
+                val newEntry = "[$timestamp] $type: $message\n"
+                feedbackPrefs.edit().putString("feedback_log", existingFeedback + newEntry).apply()
+                _uiState.update { it.copy(feedbackSent = true) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Failed to submit feedback: ${e.message}") }
+            }
+        }
     }
 }
 

@@ -26,6 +26,7 @@ googleApiDrive = "v3-rev20220815-2.0.0"
 guava = "33.5.0-android"
 coroutinesPlayServices = "1.10.2"
 firebaseBom = "33.13.0"
+grpcBom = "1.62.2"
 googleServices = "4.4.2"
 media3 = "1.6.1"
 
@@ -90,6 +91,7 @@ firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.r
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth-ktx" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore-ktx" }
 firebase-storage = { group = "com.google.firebase", name = "firebase-storage-ktx" }
+grpc-bom = { group = "io.grpc", name = "grpc-bom", version.ref = "grpcBom" }
 
 # Media3 (ExoPlayer)
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }

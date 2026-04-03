@@ -53,7 +53,13 @@ extensions.configure<ApplicationExtension> {
 
     packaging {
         resources {
-            excludes += "META-INF/DEPENDENCIES"
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt"
+            )
         }
     }
 }
@@ -108,6 +114,9 @@ dependencies {
     implementation(libs.google.api.services.drive)
     implementation(libs.guava)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // Keep Firestore gRPC artifacts on one compatible version set.
+    implementation(enforcedPlatform(libs.grpc.bom))
 
     // Firebase
     implementation(platform(libs.firebase.bom))

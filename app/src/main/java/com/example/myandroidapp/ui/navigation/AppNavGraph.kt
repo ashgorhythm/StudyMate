@@ -27,6 +27,9 @@ import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
 import com.example.myandroidapp.ui.screens.community.CommunityScreen
 import com.example.myandroidapp.ui.screens.community.CommunityViewModel
 import com.example.myandroidapp.ui.screens.community.CommunityViewModelFactory
+import com.example.myandroidapp.ui.screens.settings.AboutScreen
+import com.example.myandroidapp.ui.screens.settings.SuperUserScreen
+import com.example.myandroidapp.ui.screens.dashboard.StudyPlanSetupScreen
 
 @Composable
 fun AppNavGraph(
@@ -46,7 +49,8 @@ fun AppNavGraph(
             DashboardScreen(
                 viewModel = vm,
                 onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onNavigateToStudyPlan = { navController.navigate(Screen.StudyPlanSetup.route) }
             )
         }
         composable(Screen.Focus.route) {
@@ -78,7 +82,9 @@ fun AppNavGraph(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
-                onNavigateToInterface = { navController.navigate(Screen.InterfaceSettings.route) }
+                onNavigateToInterface = { navController.navigate(Screen.InterfaceSettings.route) },
+                onNavigateToAbout = { navController.navigate(Screen.About.route) },
+                onNavigateToSuperUser = { navController.navigate(Screen.SuperUser.route) }
             )
         }
         composable(Screen.Profile.route) {
@@ -87,6 +93,16 @@ fun AppNavGraph(
         }
         composable(Screen.InterfaceSettings.route) {
             com.example.myandroidapp.ui.screens.settings.InterfaceSettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.About.route) {
+            AboutScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.StudyPlanSetup.route) {
+            val dashVm: DashboardViewModel = viewModel(factory = DashboardViewModelFactory(repository, context))
+            StudyPlanSetupScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.SuperUser.route) {
+            SuperUserScreen(onBack = { navController.popBackStack() })
         }
     }
 }

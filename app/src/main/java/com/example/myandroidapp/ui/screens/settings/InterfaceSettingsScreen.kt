@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.LocalAccentColor
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlinx.coroutines.launch
 
@@ -74,7 +75,8 @@ fun InterfaceSettingsScreen(onBack: () -> Unit) {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = adaptive.horizontalPadding)
-                    .padding(top = if (adaptive.isTablet) 24.dp else 48.dp, bottom = 40.dp)
+                    .statusBarsPadding()
+                    .padding(top = if (adaptive.isTablet) 24.dp else 0.dp, bottom = 40.dp)
                     .align(Alignment.TopCenter)
             ) {
                 // Header

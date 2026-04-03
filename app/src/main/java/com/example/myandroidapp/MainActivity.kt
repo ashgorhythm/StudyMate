@@ -29,12 +29,15 @@ import androidx.navigation.compose.rememberNavController
 import com.example.myandroidapp.data.preferences.UserPreferences
 import com.example.myandroidapp.ui.navigation.AppNavGraph
 import com.example.myandroidapp.ui.navigation.Screen
+import com.example.myandroidapp.ui.navigation.bottomNavHiddenRoutes
 import com.example.myandroidapp.ui.navigation.bottomNavItems
 import com.example.myandroidapp.ui.screens.focus.FocusViewModel
 import com.example.myandroidapp.ui.screens.focus.FocusViewModelFactory
 import com.example.myandroidapp.ui.screens.onboarding.OnboardingScreen
 import com.example.myandroidapp.ui.screens.onboarding.StudyBuddySetupScreen
 import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.LocalAccentColor
+import com.example.myandroidapp.ui.theme.LocalIsDarkTheme
 import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -113,6 +116,8 @@ private fun MainApp(app: StudentCompanionApp) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val adaptive = rememberAdaptiveInfo()
+    val accent = LocalAccentColor.current
+    val isDark = LocalIsDarkTheme.current
 
     // ── Hoist FocusViewModel here so nav bar can observe focus lock ──
     val focusViewModel: FocusViewModel = viewModel(
@@ -120,6 +125,9 @@ private fun MainApp(app: StudentCompanionApp) {
     )
     val focusState by focusViewModel.uiState.collectAsState()
     val isFocusLocked = focusState.isAppLocked
+
+    // Should the bottom nav be hidden?
+    val shouldHideBottomNav = currentRoute in bottomNavHiddenRoutes
 
     // Helper: navigate to a tab, unless focus is locked (then notify user)
     val scope = rememberCoroutineScope()
@@ -146,62 +154,21 @@ private fun MainApp(app: StudentCompanionApp) {
     if (adaptive.isTablet) {
         // ── TABLET: NavigationRail ──
         Row(Modifier.fillMaxSize()) {
-            NavigationRail(
-                containerColor = NavyMedium,
-                contentColor = TextPrimary,
-                header = {
-                    Spacer(Modifier.height(12.dp))
-                    Text("SM", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TealPrimary, modifier = Modifier.padding(vertical = 12.dp))
-                }
-            ) {
-                Spacer(Modifier.height(24.dp))
-                bottomNavItems.forEach { screen ->
-                    val selected = currentRoute == screen.route
-                    val icon = getNavIcon(screen, selected)
-                    val locked = isFocusLocked && screen.route != Screen.Focus.route
-                    NavigationRailItem(
-                        selected = selected,
-                        onClick = { navigateTo(screen.route) },
-                        icon = {
-                            BadgedBox(badge = {
-                                if (locked) Badge(containerColor = RedError.copy(0.7f)) {
-                                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(8.dp))
-                                }
-                            }) {
-                                Icon(icon, screen.title, Modifier.size(24.dp))
-                            }
-                        },
-                        label = { Text(screen.title, fontSize = 10.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = if (locked) TextMuted else TealPrimary,
-                            selectedTextColor = TealPrimary,
-                            unselectedIconColor = if (locked) TextMuted.copy(0.5f) else TextMuted,
-                            unselectedTextColor = TextMuted,
-                            indicatorColor = TealPrimary.copy(alpha = 0.12f)
-                        )
-                    )
-                }
-            }
-            Box(Modifier.weight(1f).fillMaxHeight()) {
-                AppNavGraph(navController = navController, repository = app.repository, focusViewModel = focusViewModel)
-            }
-        }
-    } else {
-        // ── PHONE: Bottom nav bar ──
-        Scaffold(
-            containerColor = NavyDark,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            bottomBar = {
-                NavigationBar(
-                    containerColor = NavyMedium,
-                    contentColor = TextPrimary,
-                    tonalElevation = 0.dp
+            if (!shouldHideBottomNav) {
+                NavigationRail(
+                    containerColor = if (isDark) NavyMedium else MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    header = {
+                        Spacer(Modifier.height(12.dp))
+                        Text("SM", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = accent, modifier = Modifier.padding(vertical = 12.dp))
+                    }
                 ) {
+                    Spacer(Modifier.height(24.dp))
                     bottomNavItems.forEach { screen ->
                         val selected = currentRoute == screen.route
                         val icon = getNavIcon(screen, selected)
                         val locked = isFocusLocked && screen.route != Screen.Focus.route
-                        NavigationBarItem(
+                        NavigationRailItem(
                             selected = selected,
                             onClick = { navigateTo(screen.route) },
                             icon = {
@@ -213,15 +180,60 @@ private fun MainApp(app: StudentCompanionApp) {
                                     Icon(icon, screen.title, Modifier.size(24.dp))
                                 }
                             },
-                            label = { Text(screen.title, fontSize = 11.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = if (locked) TextMuted else TealPrimary,
-                                selectedTextColor = TealPrimary,
+                            label = { Text(screen.title, fontSize = 10.sp) },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = if (locked) TextMuted else accent,
+                                selectedTextColor = accent,
                                 unselectedIconColor = if (locked) TextMuted.copy(0.5f) else TextMuted,
                                 unselectedTextColor = TextMuted,
-                                indicatorColor = TealPrimary.copy(alpha = 0.12f)
+                                indicatorColor = accent.copy(alpha = 0.12f)
                             )
                         )
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                AppNavGraph(navController = navController, repository = app.repository, focusViewModel = focusViewModel)
+            }
+        }
+    } else {
+        // ── PHONE: Bottom nav bar ──
+        Scaffold(
+            containerColor = if (isDark) NavyDark else MaterialTheme.colorScheme.background,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                if (!shouldHideBottomNav) {
+                    NavigationBar(
+                        containerColor = if (isDark) NavyMedium else MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        tonalElevation = 0.dp
+                    ) {
+                        bottomNavItems.forEach { screen ->
+                            val selected = currentRoute == screen.route
+                            val icon = getNavIcon(screen, selected)
+                            val locked = isFocusLocked && screen.route != Screen.Focus.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = { navigateTo(screen.route) },
+                                icon = {
+                                    BadgedBox(badge = {
+                                        if (locked) Badge(containerColor = RedError.copy(0.7f)) {
+                                            Icon(Icons.Default.Lock, null, modifier = Modifier.size(8.dp))
+                                        }
+                                    }) {
+                                        Icon(icon, screen.title, Modifier.size(24.dp))
+                                    }
+                                },
+                                label = { Text(screen.title, fontSize = 11.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = if (locked) TextMuted else accent,
+                                    selectedTextColor = accent,
+                                    unselectedIconColor = if (locked) TextMuted.copy(0.5f) else TextMuted,
+                                    unselectedTextColor = TextMuted,
+                                    indicatorColor = accent.copy(alpha = 0.12f)
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -243,5 +255,8 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
         Screen.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
         Screen.Profile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
         Screen.InterfaceSettings -> if (selected) Icons.Filled.Palette else Icons.Outlined.Palette
+        Screen.About -> if (selected) Icons.Filled.Info else Icons.Outlined.Info
+        Screen.StudyPlanSetup -> if (selected) Icons.Filled.EventNote else Icons.Outlined.EventNote
+        Screen.SuperUser -> if (selected) Icons.Filled.AdminPanelSettings else Icons.Outlined.AdminPanelSettings
     }
 }

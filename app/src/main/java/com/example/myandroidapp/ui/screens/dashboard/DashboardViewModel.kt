@@ -68,7 +68,7 @@ class DashboardViewModel(
     private fun loadDashboardData() {
         viewModelScope.launch {
             combine(
-                repository.urgentTasks,
+                repository.highPriorityTasks,
                 repository.allSubjects,
                 repository.completedCount,
                 repository.totalTaskCount,

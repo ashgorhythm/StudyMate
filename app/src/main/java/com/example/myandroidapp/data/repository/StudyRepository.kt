@@ -20,6 +20,7 @@ class StudyRepository(
     val allTasks: Flow<List<StudyTask>> = taskDao.getAllTasks()
     val pendingTasks: Flow<List<StudyTask>> = taskDao.getPendingTasks()
     val urgentTasks: Flow<List<StudyTask>> = taskDao.getUrgentTasks()
+    val highPriorityTasks: Flow<List<StudyTask>> = taskDao.getHighPriorityTasks()
     val completedCount: Flow<Int> = taskDao.getCompletedCount()
     val totalTaskCount: Flow<Int> = taskDao.getTotalCount()
 

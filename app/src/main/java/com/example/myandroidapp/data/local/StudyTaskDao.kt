@@ -15,6 +15,9 @@ interface StudyTaskDao {
     @Query("SELECT * FROM study_tasks WHERE isCompleted = 0 ORDER BY dueDate ASC LIMIT 5")
     fun getUrgentTasks(): Flow<List<StudyTask>>
 
+    @Query("SELECT * FROM study_tasks WHERE isCompleted = 0 AND priority = 2 ORDER BY dueDate ASC LIMIT 10")
+    fun getHighPriorityTasks(): Flow<List<StudyTask>>
+
     @Query("SELECT * FROM study_tasks WHERE subject = :subject")
     fun getTasksBySubject(subject: String): Flow<List<StudyTask>>
 

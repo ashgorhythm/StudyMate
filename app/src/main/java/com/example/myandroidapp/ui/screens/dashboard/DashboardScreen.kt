@@ -44,10 +44,12 @@ fun DashboardScreen(
     viewModel: DashboardViewModel,
     onNavigateToSettings: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
+    onNavigateToStudyPlan: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val adaptive = rememberAdaptiveInfo()
     var showProfileOverlay by remember { mutableStateOf(false) }
+    val accent = LocalAccentColor.current
 
 
     // ── Task Dialog ──
@@ -87,7 +89,8 @@ fun DashboardScreen(
                 onProfileClick = { showProfileOverlay = true })
         } else {
             PhoneDashboard(uiState, viewModel,
-                onProfileClick = { showProfileOverlay = true })
+                onProfileClick = { showProfileOverlay = true },
+                onStudyPlanClick = onNavigateToStudyPlan)
         }
 
         // ── FAB ──
@@ -96,7 +99,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = adaptive.horizontalPadding, bottom = if (adaptive.isTablet) 24.dp else 11.dp),
-            containerColor = TealPrimary,
+            containerColor = accent,
             contentColor = NavyDark,
             shape = CircleShape
         ) {
@@ -126,13 +129,14 @@ fun DashboardScreen(
 // ═══════════════════════════════════════════════════════
 
 @Composable
-private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewModel, onProfileClick: () -> Unit) {
+private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewModel, onProfileClick: () -> Unit, onStudyPlanClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 48.dp, bottom = 100.dp)
+            .statusBarsPadding()
+            .padding(top = 8.dp, bottom = 100.dp)
     ) {
         GreetingSection(uiState.studentName, onProfileClick = onProfileClick)
         Spacer(Modifier.height(16.dp))
@@ -142,7 +146,7 @@ private fun PhoneDashboard(uiState: DashboardUiState, viewModel: DashboardViewMo
         Spacer(Modifier.height(24.dp))
         ThisMonthWeeklyGrid(uiState)
         Spacer(Modifier.height(28.dp))
-        OverviewSection(uiState)
+        OverviewSection(uiState, onStudyPlanClick = onStudyPlanClick)
         Spacer(Modifier.height(28.dp))
         QuickStatsRow(uiState)
         Spacer(Modifier.height(28.dp))
@@ -678,7 +682,7 @@ private fun ThisMonthWeeklyGrid(state: DashboardUiState) {
 // ═══════════════════════════════════════════════════════
 
 @Composable
-private fun OverviewSection(state: DashboardUiState) {
+private fun OverviewSection(state: DashboardUiState, onStudyPlanClick: () -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -689,9 +693,10 @@ private fun OverviewSection(state: DashboardUiState) {
     }
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Study Plan card
+        // Study Plan card — clickable navigates to setup
         Card(
-            modifier = Modifier.weight(1f).height(140.dp),
+            modifier = Modifier.weight(1f).height(140.dp)
+                .clickable { onStudyPlanClick() },
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceCard),
             border = BorderStroke(1.dp, PurpleAccent.copy(alpha = 0.2f))
@@ -700,7 +705,10 @@ private fun OverviewSection(state: DashboardUiState) {
                 Modifier.fillMaxSize().padding(16.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Study Plan", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Text("Study Plan", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Icon(Icons.Default.EventNote, null, tint = PurpleAccent, modifier = Modifier.size(18.dp))
+                }
                 Row(
                     Modifier.fillMaxWidth().height(40.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -717,13 +725,14 @@ private fun OverviewSection(state: DashboardUiState) {
                     }
                 }
                 Text(
-                    if (state.studyPlanSet) "Active" else "No plan set",
+                    if (state.studyPlanSet) "✓ Active" else "Tap to set up →",
                     fontSize = 11.sp,
-                    color = if (state.studyPlanSet) GreenSuccess else TextMuted
+                    color = if (state.studyPlanSet) GreenSuccess else PurpleAccent,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
-        // Deadlines card
+        // Deadlines card — shows real pending info
         Card(
             modifier = Modifier.weight(1f).height(140.dp),
             shape = RoundedCornerShape(16.dp),
@@ -734,21 +743,24 @@ private fun OverviewSection(state: DashboardUiState) {
                 Modifier.fillMaxSize().padding(16.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Deadlines", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Text("Deadlines", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Icon(Icons.Default.AccessAlarm, null, tint = PinkAccent, modifier = Modifier.size(18.dp))
+                }
                 Column {
-                    Text("${state.pendingExams} Exams", fontSize = 12.sp, color = TextSecondary)
+                    val pendingCount = state.totalTasks - state.completedTasks
+                    Text("$pendingCount Pending Tasks", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(2.dp))
                     Text("${state.pendingAssignments} Assignments", fontSize = 12.sp, color = TextSecondary)
                     Spacer(Modifier.height(4.dp))
-                    val totalPending = state.pendingExams + state.pendingAssignments
                     Text(
-                        "$totalPending Total Pending",
+                        if (pendingCount > 0) "⚡ $pendingCount items due" else "✓ All caught up!",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CrimsonAccent
+                        color = if (pendingCount > 0) CrimsonAccent else GreenSuccess
                     )
                 }
-                Text("Deadline Count", fontSize = 10.sp, color = TextMuted)
+                Text("Based on your tasks", fontSize = 10.sp, color = TextMuted)
             }
         }
     }
@@ -760,14 +772,18 @@ private fun OverviewSection(state: DashboardUiState) {
 
 @Composable
 private fun StudyActivityHeatmapSection() {
+    var expanded by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("Study Activity Heatmap", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        IconButton(onClick = { /* TODO: expand heatmap */ }) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, "More", tint = TextMuted, modifier = Modifier.size(20.dp))
+        IconButton(onClick = { expanded = !expanded }) {
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                "Toggle", tint = TextMuted, modifier = Modifier.size(20.dp)
+            )
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -781,6 +797,25 @@ private fun StudyActivityHeatmapSection() {
                         Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(TealPrimary.copy(intensities[idx])))
                         Spacer(Modifier.height(4.dp))
                         Text(day, fontSize = 10.sp, color = TextSecondary)
+                    }
+                }
+            }
+            if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                Text("Weekly Summary", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("7", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
+                        Text("Active days", fontSize = 10.sp, color = TextMuted)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Wed", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GreenSuccess)
+                        Text("Best day", fontSize = 10.sp, color = TextMuted)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("4.2h", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PurpleAccent)
+                        Text("Avg/day", fontSize = 10.sp, color = TextMuted)
                     }
                 }
             }
@@ -802,14 +837,18 @@ private fun StudyActivityHeatmapSection() {
 
 @Composable
 private fun TrendSection() {
+    var expanded by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("Trend", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        IconButton(onClick = { /* TODO: expand trend */ }) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, "More", tint = TextMuted, modifier = Modifier.size(20.dp))
+        IconButton(onClick = { expanded = !expanded }) {
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                "Toggle", tint = TextMuted, modifier = Modifier.size(20.dp)
+            )
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -851,6 +890,25 @@ private fun TrendSection() {
                 color = GreenSuccess,
                 fontWeight = FontWeight.Medium
             )
+            if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = TextMuted.copy(0.15f))
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("+23%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GreenSuccess)
+                        Text("vs Last Month", fontSize = 10.sp, color = TextMuted)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("4.5h", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TealPrimary)
+                        Text("Daily Avg", fontSize = 10.sp, color = TextMuted)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("31.5h", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PurpleAccent)
+                        Text("Total", fontSize = 10.sp, color = TextMuted)
+                    }
+                }
+            }
         }
     }
 }

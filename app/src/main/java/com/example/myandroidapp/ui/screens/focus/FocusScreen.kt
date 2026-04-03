@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -90,6 +91,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myandroidapp.data.model.AllowedContact
 import com.example.myandroidapp.ui.theme.AmberAccent
+import com.example.myandroidapp.ui.theme.LocalAccentColor
 import com.example.myandroidapp.ui.theme.NavyDark
 import com.example.myandroidapp.ui.theme.NavyLight
 import com.example.myandroidapp.ui.theme.NavyMedium
@@ -243,8 +245,9 @@ fun FocusScreen(viewModel: FocusViewModel) {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = adaptive.horizontalPadding)
+                    .statusBarsPadding()
                     .padding(
-                        top = if (adaptive.isTablet) 24.dp else 48.dp,
+                        top = if (adaptive.isTablet) 24.dp else 8.dp,
                         bottom = if (adaptive.isTablet) 32.dp else 100.dp
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -252,6 +255,13 @@ fun FocusScreen(viewModel: FocusViewModel) {
                 // ── Focus Mode Banner ──
                 FocusModeBanner(isActive = uiState.isRunning)
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // ── Today's Stats (MOVED TO TOP) ──
+                TodayStats(
+                    sessions = uiState.todaySessionCount,
+                    minutes = uiState.todayTotalMinutes
+                )
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // ── App Lock Notice ──
                 if (uiState.isAppLocked) {
@@ -314,7 +324,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
                 )
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // ── Controls ──
+                // ── Controls (Reset disabled during session) ──
                 TimerControls(
                     isRunning = uiState.isRunning,
                     onToggle = { viewModel.toggleTimer() },
@@ -322,7 +332,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
                 )
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // ── Duration Chips (with Custom) ──
+                // ── Duration Chips ──
                 DurationSelector(
                     selected = uiState.selectedDuration,
                     customMinutes = uiState.customDurationMinutes,
@@ -347,13 +357,6 @@ fun FocusScreen(viewModel: FocusViewModel) {
                     onRequestDndPermission = { viewModel.requestDndPermission(context) },
                     allowedContactsCount = uiState.allowedContacts.size,
                     onManageContacts = { viewModel.showAllowedContactsDialog() }
-                )
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // ── Today's Stats ──
-                TodayStats(
-                    sessions = uiState.todaySessionCount,
-                    minutes = uiState.todayTotalMinutes
                 )
             }
         }
@@ -616,14 +619,16 @@ private fun TimerControls(isRunning: Boolean, onToggle: () -> Unit, onReset: () 
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Reset button disabled during active session
         OutlinedButton(
             onClick = onReset,
             modifier = Modifier
                 .height(52.dp)
                 .weight(1f),
             shape = RoundedCornerShape(26.dp),
-            border = BorderStroke(1.dp, TextMuted),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+            border = BorderStroke(1.dp, if (isRunning) TextMuted.copy(0.3f) else TextMuted),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isRunning) TextMuted.copy(0.4f) else TextSecondary),
+            enabled = !isRunning
         ) {
             Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(6.dp))
@@ -658,13 +663,14 @@ private fun DurationSelector(
 ) {
     val presets = listOf(25, 30, 45, 60)
 
-    Column {
-        Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Session Duration", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium,
+            modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(10.dp))
-        androidx.compose.foundation.layout.FlowRow(
+        // Row 1: 4 preset chips evenly spaced
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             presets.forEach { min ->
                 val isSelected = selected == min
@@ -673,6 +679,7 @@ private fun DurationSelector(
                     onClick = { if (!isRunning) onSelect(min) },
                     label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
                     enabled = !isRunning,
+                    modifier = Modifier.weight(1f),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = TealPrimary.copy(alpha = 0.2f),
                         selectedLabelColor = TealPrimary,
@@ -687,8 +694,13 @@ private fun DurationSelector(
                     )
                 )
             }
-
-            // Custom duration chip
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        // Row 2: Custom chip centered
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
             val isCustom = selected == 0
             val customLabel = if (isCustom) {
                 val h = customMinutes / 60

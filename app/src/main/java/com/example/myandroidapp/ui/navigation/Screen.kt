@@ -9,6 +9,9 @@ sealed class Screen(val route: String, val title: String, val icon: String) {
     data object Settings : Screen("settings", "Settings", "settings")
     data object Profile : Screen("profile", "My Profile", "profile")
     data object InterfaceSettings : Screen("interface_settings", "Interface Settings", "interface_settings")
+    data object About : Screen("about", "About", "about")
+    data object StudyPlanSetup : Screen("study_plan_setup", "Study Plan", "study_plan")
+    data object SuperUser : Screen("super_user", "SuperUser", "super_user")
 }
 
 val bottomNavItems = listOf(
@@ -18,3 +21,14 @@ val bottomNavItems = listOf(
     Screen.Library,
     Screen.AiChat
 )
+
+// Routes where bottom nav should be hidden
+val bottomNavHiddenRoutes = setOf(
+    Screen.Settings.route,
+    Screen.Profile.route,
+    Screen.InterfaceSettings.route,
+    Screen.About.route,
+    Screen.StudyPlanSetup.route,
+    Screen.SuperUser.route
+)
+
