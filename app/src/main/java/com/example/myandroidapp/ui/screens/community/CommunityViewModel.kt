@@ -46,9 +46,7 @@ data class CommunityPost(
     val attachment: ScannedFile? = null,
     val attachmentUri: String? = null,
     val attachmentName: String? = null,
-    val isSaved: Boolean = false,
-    val isAwarded: Boolean = false,
-    val awardCount: Int = 0
+    val isSaved: Boolean = false
 )
 
 data class CommunityInfo(
@@ -79,7 +77,7 @@ data class CommunityUiState(
     val communities: List<CommunityInfo> = emptyList(),
     val selectedCommunityId: String? = null,
     val pendingRequests: List<CommunityMemberEntity> = emptyList(),
-    val currentTab: CommunityTab = CommunityTab.FEED,
+    val currentTab: CommunityTab = CommunityTab.HUB,
     val friends: List<UserProfileEntity> = emptyList(),
     val incomingFriendRequests: List<Pair<FriendRequestEntity, UserProfileEntity?>> = emptyList(),
     val chatMessages: List<ChatMessageEntity> = emptyList(),
@@ -88,7 +86,7 @@ data class CommunityUiState(
     val isLoading: Boolean = true
 )
 
-enum class CommunityTab { FEED, COMMUNITIES, FRIENDS }
+enum class CommunityTab { HUB, FEED, COMMUNITIES, FRIENDS }
 
 // ═══════════════════════════════════════════════════════
 // ── ViewModel (Firebase-backed) ──
@@ -283,12 +281,7 @@ class CommunityViewModel(
         applyFilters()
     }
 
-    fun toggleAwardPost(postId: String) {
-        allPosts = allPosts.map {
-            if (it.id == postId) it.copy(isAwarded = !it.isAwarded, awardCount = if (it.isAwarded) it.awardCount - 1 else it.awardCount + 1) else it
-        }
-        applyFilters()
-    }
+
 
     // ═══════ Community Management ═══════
 

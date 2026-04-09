@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myandroidapp.ui.theme.*
@@ -25,7 +26,6 @@ fun StudyPlanSetupScreen(onBack: () -> Unit) {
     val adaptive = rememberAdaptiveInfo()
 
     // Weekly plan state
-    val days = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     val dayAbbr = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     var selectedDays by remember { mutableStateOf(setOf(0, 1, 2, 3, 4)) } // Mon-Fri default
     var hoursPerDay by remember { mutableStateOf(3f) }
@@ -127,15 +127,15 @@ fun StudyPlanSetupScreen(onBack: () -> Unit) {
                                 if (isSelected) TealPrimary.copy(0.5f) else Color.Transparent
                             )
                         ) {
-                            Column(
+                            Box(
                                 Modifier.padding(vertical = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     abbr,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) TealPrimary else TextMuted
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isSelected) TealPrimary else TextPrimary
                                 )
                             }
                         }

@@ -12,6 +12,9 @@ sealed class Screen(val route: String, val title: String, val icon: String) {
     data object About : Screen("about", "About", "about")
     data object StudyPlanSetup : Screen("study_plan_setup", "Study Plan", "study_plan")
     data object SuperUser : Screen("super_user", "SuperUser", "super_user")
+    data object UserProfile : Screen("user_profile/{memberId}", "Profile", "profile") {
+        fun createRoute(memberId: String) = "user_profile/$memberId"
+    }
 }
 
 val bottomNavItems = listOf(
@@ -29,6 +32,7 @@ val bottomNavHiddenRoutes = setOf(
     Screen.InterfaceSettings.route,
     Screen.About.route,
     Screen.StudyPlanSetup.route,
-    Screen.SuperUser.route
+    Screen.SuperUser.route,
+    "user_profile/{memberId}"
 )
 

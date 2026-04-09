@@ -27,9 +27,14 @@ import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
 import com.example.myandroidapp.ui.screens.community.CommunityScreen
 import com.example.myandroidapp.ui.screens.community.CommunityViewModel
 import com.example.myandroidapp.ui.screens.community.CommunityViewModelFactory
+import com.example.myandroidapp.ui.screens.profile.UserProfileScreen
+import com.example.myandroidapp.ui.screens.profile.UserProfileViewModel
+import com.example.myandroidapp.ui.screens.profile.UserProfileViewModelFactory
 import com.example.myandroidapp.ui.screens.settings.AboutScreen
 import com.example.myandroidapp.ui.screens.settings.SuperUserScreen
 import com.example.myandroidapp.ui.screens.dashboard.StudyPlanSetupScreen
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 @Composable
 fun AppNavGraph(
@@ -66,7 +71,12 @@ fun AppNavGraph(
         }
         composable(Screen.Community.route) {
             val vm: CommunityViewModel = viewModel(factory = CommunityViewModelFactory(app.firebaseSocialService, context))
-            CommunityScreen(viewModel = vm)
+            CommunityScreen(
+                viewModel = vm,
+                onNavigateToProfile = { memberId ->
+                    navController.navigate(Screen.UserProfile.createRoute(memberId))
+                }
+            )
         }
         composable(Screen.Settings.route) {
             val vm: SettingsViewModel = viewModel(
@@ -103,6 +113,24 @@ fun AppNavGraph(
         }
         composable(Screen.SuperUser.route) {
             SuperUserScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = Screen.UserProfile.route,
+            arguments = listOf(navArgument("memberId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val memberId = backStackEntry.arguments?.getString("memberId") ?: return@composable
+            val currentMemberId = app.firebaseSocialService.currentUserId ?: ""
+            val vm: UserProfileViewModel = viewModel(
+                factory = UserProfileViewModelFactory(
+                    firebase = app.firebaseSocialService,
+                    currentMemberId = currentMemberId,
+                    targetMemberId = memberId
+                )
+            )
+            UserProfileScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }

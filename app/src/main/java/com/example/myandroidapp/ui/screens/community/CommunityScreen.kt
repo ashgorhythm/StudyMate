@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -13,7 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,7 +40,10 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommunityScreen(viewModel: CommunityViewModel) {
+fun CommunityScreen(
+    viewModel: CommunityViewModel,
+    onNavigateToProfile: (String) -> Unit = {}
+) {
     val state by viewModel.uiState.collectAsState()
 
     // Dialog states
@@ -46,6 +51,9 @@ fun CommunityScreen(viewModel: CommunityViewModel) {
     var commentSheetPost by remember { mutableStateOf<CommunityPost?>(null) }
     var showCreateCommunity by remember { mutableStateOf(false) }
     var manageCommunityId by remember { mutableStateOf<String?>(null) }
+
+    // Navigation rail state
+    var isRailExpanded by remember { mutableStateOf(false) }
 
     // Chat overlay
     val chatTarget = state.chatTarget
@@ -65,79 +73,72 @@ fun CommunityScreen(viewModel: CommunityViewModel) {
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(NavyDark, NavyMedium.copy(0.5f), NavyDark)))
     ) {
-        Column(Modifier.fillMaxSize()) {
-            // ── Top Bar ──
-            CommunityTopBar(
-                state = state,
-                onToggleSearch = { viewModel.toggleSearch() },
-                onSearchQueryChange = { viewModel.setSearchQuery(it) }
+        Row(Modifier.fillMaxSize()) {
+            // ── Animated Navigation Rail ──
+            CommunityNavigationRail(
+                currentTab = state.currentTab,
+                isExpanded = isRailExpanded,
+                onTabSelected = { tab ->
+                    viewModel.setTab(tab)
+                    // Auto-collapse after selection on small screens
+                    isRailExpanded = false
+                },
+                onToggle = { isRailExpanded = !isRailExpanded }
             )
 
-            // ── Tab Row ──
-            val tabs = CommunityTab.entries
-            SecondaryTabRow(
-                selectedTabIndex = tabs.indexOf(state.currentTab),
-                containerColor = Color.Transparent,
-                contentColor = TealPrimary,
-                indicator = {
-                    TabRowDefaults.SecondaryIndicator(color = TealPrimary)
-                }
-            ) {
-                tabs.forEach { tab ->
-                    Tab(
-                        selected = state.currentTab == tab,
-                        onClick = { viewModel.setTab(tab) },
-                        text = {
-                            Text(
-                                when (tab) {
-                                    CommunityTab.FEED -> "Feed"
-                                    CommunityTab.COMMUNITIES -> "Groups"
-                                    CommunityTab.FRIENDS -> "Friends"
-                                },
-                                fontWeight = if (state.currentTab == tab) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 13.sp
-                            )
-                        },
-                        selectedContentColor = TealPrimary,
-                        unselectedContentColor = TextMuted
+            // ── Main Content ──
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                // ── Top Bar ──
+                CommunityTopBar(
+                    state = state,
+                    currentTab = state.currentTab,
+                    onToggleSearch = { viewModel.toggleSearch() },
+                    onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                    onToggleRail = { isRailExpanded = !isRailExpanded }
+                )
+
+                // ── Tab Content ──
+                when (state.currentTab) {
+                    CommunityTab.HUB -> CommunityHubScreen(
+                        state = state,
+                        onNavigateToFeed = { viewModel.setTab(CommunityTab.FEED) },
+                        onNavigateToGroups = { viewModel.setTab(CommunityTab.COMMUNITIES) },
+                        onNavigateToFriends = { viewModel.setTab(CommunityTab.FRIENDS) },
+                        onNewPost = { showNewPostDialog = true }
+                    )
+                    CommunityTab.FEED -> FeedContent(
+                        state = state,
+                        onSortChange = { viewModel.setSortMode(it) },
+                        onTagChange = { viewModel.setSelectedTag(it) },
+                        onExpandPost = { viewModel.expandPost(it) },
+                        onUpvote = { viewModel.toggleUpvote(it) },
+                        onDownvote = { viewModel.toggleDownvote(it) },
+                        onSave = { viewModel.toggleSavePost(it) },
+                        onComment = { commentSheetPost = state.posts.find { p -> p.id == it } },
+                        onClearCommunityFilter = { viewModel.selectCommunity(null) },
+                        onProfileClick = { memberId -> onNavigateToProfile(memberId) }
+                    )
+                    CommunityTab.COMMUNITIES -> CommunitiesTab(
+                        communities = state.communities,
+                        currentMemberId = state.currentMemberId,
+                        onJoin = { viewModel.joinCommunity(it) },
+                        onSelect = { viewModel.selectCommunity(it); viewModel.setTab(CommunityTab.FEED) },
+                        onCreate = { showCreateCommunity = true },
+                        onManageMembers = { manageCommunityId = it; viewModel.loadPendingRequests(it) }
+                    )
+                    CommunityTab.FRIENDS -> FriendsTab(
+                        friends = state.friends,
+                        incomingRequests = state.incomingFriendRequests,
+                        onAccept = { viewModel.acceptFriendRequest(it) },
+                        onReject = { viewModel.rejectFriendRequest(it) },
+                        onChat = { viewModel.openChat(it) }
                     )
                 }
-            }
-
-            // ── Tab Content ──
-            when (state.currentTab) {
-                CommunityTab.FEED -> FeedContent(
-                    state = state,
-                    onSortChange = { viewModel.setSortMode(it) },
-                    onTagChange = { viewModel.setSelectedTag(it) },
-                    onExpandPost = { viewModel.expandPost(it) },
-                    onUpvote = { viewModel.toggleUpvote(it) },
-                    onDownvote = { viewModel.toggleDownvote(it) },
-                    onSave = { viewModel.toggleSavePost(it) },
-                    onAward = { viewModel.toggleAwardPost(it) },
-                    onComment = { commentSheetPost = state.posts.find { p -> p.id == it } },
-                    onClearCommunityFilter = { viewModel.selectCommunity(null) }
-                )
-                CommunityTab.COMMUNITIES -> CommunitiesTab(
-                    communities = state.communities,
-                    currentMemberId = state.currentMemberId,
-                    onJoin = { viewModel.joinCommunity(it) },
-                    onSelect = { viewModel.selectCommunity(it); viewModel.setTab(CommunityTab.FEED) },
-                    onCreate = { showCreateCommunity = true },
-                    onManageMembers = { manageCommunityId = it; viewModel.loadPendingRequests(it) }
-                )
-                CommunityTab.FRIENDS -> FriendsTab(
-                    friends = state.friends,
-                    incomingRequests = state.incomingFriendRequests,
-                    onAccept = { viewModel.acceptFriendRequest(it) },
-                    onReject = { viewModel.rejectFriendRequest(it) },
-                    onChat = { viewModel.openChat(it) }
-                )
             }
         }
 
         // ── FAB ──
-        if (state.currentTab == CommunityTab.FEED) {
+        if (state.currentTab == CommunityTab.FEED || state.currentTab == CommunityTab.HUB) {
             FloatingActionButton(
                 onClick = { showNewPostDialog = true },
                 modifier = Modifier
@@ -147,6 +148,16 @@ fun CommunityScreen(viewModel: CommunityViewModel) {
                 contentColor = NavyDark,
                 shape = CircleShape
             ) { Icon(Icons.Default.Edit, "New Post") }
+        }
+
+        // ── Scrim for rail (click outside to close) ──
+        if (isRailExpanded) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = { isRailExpanded = false })
+                    .background(Color.Black.copy(0.3f))
+            )
         }
     }
 
@@ -191,11 +202,167 @@ fun CommunityScreen(viewModel: CommunityViewModel) {
 }
 
 // ═══════════════════════════════════════════════════════
-// ── Top Bar ──
+// ── Animated Navigation Rail ──
+// ═══════════════════════════════════════════════════════
+
+private data class NavRailItem(
+    val tab: CommunityTab,
+    val label: String,
+    val icon: ImageVector,
+    val selectedIcon: ImageVector
+)
+
+private val navRailItems = listOf(
+    NavRailItem(CommunityTab.HUB, "Hub", Icons.Outlined.Home, Icons.Filled.Home),
+    NavRailItem(CommunityTab.FEED, "Feed", Icons.Outlined.Forum, Icons.Filled.Forum),
+    NavRailItem(CommunityTab.COMMUNITIES, "Groups", Icons.Outlined.Groups, Icons.Filled.Groups),
+    NavRailItem(CommunityTab.FRIENDS, "Friends", Icons.Outlined.People, Icons.Filled.People)
+)
+
+@Composable
+private fun CommunityNavigationRail(
+    currentTab: CommunityTab,
+    isExpanded: Boolean,
+    onTabSelected: (CommunityTab) -> Unit,
+    onToggle: () -> Unit
+) {
+    val railWidth by animateDpAsState(
+        targetValue = if (isExpanded) 180.dp else 56.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "railWidth"
+    )
+
+    Column(
+        Modifier
+            .width(railWidth)
+            .fillMaxHeight()
+            .background(
+                Brush.verticalGradient(
+                    listOf(NavyMedium, NavyLight.copy(0.6f), NavyMedium)
+                )
+            )
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Toggle button
+        IconButton(
+            onClick = onToggle,
+            modifier = Modifier.padding(bottom = 8.dp)
+        ) {
+            AnimatedContent(
+                targetState = isExpanded,
+                transitionSpec = {
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(200))
+                },
+                label = "menuIcon"
+            ) { expanded ->
+                Icon(
+                    if (expanded) Icons.AutoMirrored.Filled.MenuOpen else Icons.Default.Menu,
+                    contentDescription = "Toggle navigation",
+                    tint = TealPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(
+            color = TealPrimary.copy(0.15f),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Navigation items
+        navRailItems.forEach { item ->
+            val isSelected = currentTab == item.tab
+            val bgAlpha by animateFloatAsState(
+                targetValue = if (isSelected) 0.15f else 0f,
+                animationSpec = tween(250),
+                label = "bgAlpha"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(TealPrimary.copy(bgAlpha))
+                    .clickable { onTabSelected(item.tab) }
+                    .padding(vertical = 12.dp, horizontal = if (isExpanded) 14.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = if (isSelected) item.selectedIcon else item.icon,
+                    contentDescription = item.label,
+                    tint = if (isSelected) TealPrimary else TextMuted,
+                    modifier = Modifier.size(22.dp)
+                )
+
+                AnimatedVisibility(
+                    visible = isExpanded,
+                    enter = fadeIn(tween(200)) + expandHorizontally(tween(250)),
+                    exit = fadeOut(tween(150)) + shrinkHorizontally(tween(200))
+                ) {
+                    Row {
+                        Spacer(Modifier.width(14.dp))
+                        Text(
+                            item.label,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) TealPrimary else TextSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        // Bottom branding
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = fadeIn(tween(300)),
+            exit = fadeOut(tween(200))
+        ) {
+            Column(
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                HorizontalDivider(color = TextMuted.copy(0.1f))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "StudyMate",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextMuted.copy(0.5f)
+                )
+                Text(
+                    "Community",
+                    fontSize = 10.sp,
+                    color = TextMuted.copy(0.3f)
+                )
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Top Bar (with hamburger toggle) ──
 // ═══════════════════════════════════════════════════════
 
 @Composable
-private fun CommunityTopBar(state: CommunityUiState, onToggleSearch: () -> Unit, onSearchQueryChange: (String) -> Unit) {
+private fun CommunityTopBar(
+    state: CommunityUiState,
+    currentTab: CommunityTab,
+    onToggleSearch: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onToggleRail: () -> Unit
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -205,24 +372,45 @@ private fun CommunityTopBar(state: CommunityUiState, onToggleSearch: () -> Unit,
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Community", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, modifier = Modifier.weight(1f))
-            IconButton(onClick = onToggleSearch) {
-                Icon(if (state.isSearching) Icons.Default.Close else Icons.Default.Search, null, tint = TextSecondary)
+            // Title with tab name
+            val tabTitle = when (currentTab) {
+                CommunityTab.HUB -> "Community Hub"
+                CommunityTab.FEED -> "Feed"
+                CommunityTab.COMMUNITIES -> "Groups"
+                CommunityTab.FRIENDS -> "Friends"
+            }
+            Text(
+                tabTitle,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            if (currentTab == CommunityTab.FEED) {
+                IconButton(onClick = onToggleSearch) {
+                    Icon(
+                        if (state.isSearching) Icons.Default.Close else Icons.Default.Search,
+                        null,
+                        tint = TextSecondary
+                    )
+                }
             }
         }
-        AnimatedVisibility(visible = state.isSearching) {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = onSearchQueryChange,
-                placeholder = { Text("Search posts...", color = TextMuted) },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = TealPrimary, unfocusedBorderColor = TextMuted.copy(0.15f),
-                    cursorColor = TealPrimary, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary
+        if (currentTab == CommunityTab.FEED) {
+            AnimatedVisibility(visible = state.isSearching) {
+                OutlinedTextField(
+                    value = state.searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    placeholder = { Text("Search posts...", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = TealPrimary, unfocusedBorderColor = TextMuted.copy(0.15f),
+                        cursorColor = TealPrimary, focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary
+                    )
                 )
-            )
+            }
         }
     }
 }
@@ -240,9 +428,9 @@ private fun FeedContent(
     onUpvote: (String) -> Unit,
     onDownvote: (String) -> Unit,
     onSave: (String) -> Unit,
-    onAward: (String) -> Unit,
     onComment: (String) -> Unit,
-    onClearCommunityFilter: () -> Unit
+    onClearCommunityFilter: () -> Unit,
+    onProfileClick: (String) -> Unit = {}
 ) {
     Column(
         Modifier
@@ -325,7 +513,7 @@ private fun FeedContent(
                     onDownvote = { onDownvote(post.id) },
                     onComment = { onComment(post.id) },
                     onSave = { onSave(post.id) },
-                    onAward = { onAward(post.id) }
+                    onProfileClick = { onProfileClick(post.authorMemberId) }
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -347,7 +535,7 @@ private fun PostCard(
     onDownvote: () -> Unit,
     onComment: () -> Unit,
     onSave: () -> Unit,
-    onAward: () -> Unit
+    onProfileClick: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onExpand() },
@@ -365,7 +553,13 @@ private fun PostCard(
                 ) { Text(post.authorInitials.take(1), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(post.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(
+                        post.author,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TealPrimary,
+                        modifier = Modifier.clickable(onClick = onProfileClick)
+                    )
                     Text(post.timeAgo, fontSize = 11.sp, color = TextMuted)
                 }
                 val tagColor = getTagColor(post.tag)
@@ -380,21 +574,13 @@ private fun PostCard(
             Spacer(Modifier.height(6.dp))
             Text(post.body, fontSize = 13.sp, color = TextSecondary, lineHeight = 19.sp, maxLines = if (isExpanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
 
-            // Attachment
-            if (post.attachmentName != null || post.attachment != null) {
+            // Attachment — media preview (image/video/PDF thumbnails)
+            if (post.attachmentUri != null || post.attachment != null) {
                 Spacer(Modifier.height(8.dp))
-                val name = post.attachmentName ?: post.attachment?.name ?: "File"
-                Card(
-                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(TealPrimary.copy(0.06f)),
-                    border = BorderStroke(1.dp, TealPrimary.copy(0.15f))
-                ) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AttachFile, null, tint = TealPrimary, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(name, fontSize = 13.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    }
-                }
+                MediaPreviewCard(
+                    attachmentUri = post.attachmentUri ?: post.attachment?.absolutePath,
+                    attachmentName = post.attachmentName ?: post.attachment?.name
+                )
             }
 
             Spacer(Modifier.height(10.dp))
@@ -431,11 +617,6 @@ private fun PostCard(
                 IconButton(onClick = onSave, modifier = Modifier.size(30.dp)) {
                     Icon(if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null,
                         tint = if (post.isSaved) AmberAccent else TextMuted, modifier = Modifier.size(16.dp))
-                }
-                // Award
-                IconButton(onClick = onAward, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.EmojiEvents, null,
-                        tint = if (post.isAwarded) AmberAccent else TextMuted, modifier = Modifier.size(16.dp))
                 }
             }
 

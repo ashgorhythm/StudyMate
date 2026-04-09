@@ -258,5 +258,6 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
         Screen.About -> if (selected) Icons.Filled.Info else Icons.Outlined.Info
         Screen.StudyPlanSetup -> if (selected) Icons.Filled.EventNote else Icons.Outlined.EventNote
         Screen.SuperUser -> if (selected) Icons.Filled.AdminPanelSettings else Icons.Outlined.AdminPanelSettings
+        Screen.UserProfile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
     }
 }

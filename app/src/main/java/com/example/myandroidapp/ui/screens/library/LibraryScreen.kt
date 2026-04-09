@@ -32,6 +32,14 @@ import com.example.myandroidapp.ui.util.rememberAdaptiveInfo
 import com.example.myandroidapp.util.ScannedFile
 import java.io.File
 import java.util.*
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -360,17 +368,99 @@ private fun FileCard(
         border = BorderStroke(1.dp, tc.copy(0.15f))
     ) {
         Column(Modifier.padding(12.dp)) {
-            // Top: icon area + 3-dot menu
+            // Top: thumbnail area + 3-dot menu
             Box(Modifier.fillMaxWidth()) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(72.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(tc.copy(0.1f)),
-                    Alignment.Center
-                ) {
-                    Icon(ti, null, tint = tc, modifier = Modifier.size(36.dp))
+                when (file.type) {
+                    "IMAGE" -> {
+                        // Actual image thumbnail via Coil
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(File(file.absolutePath))
+                                .crossfade(true)
+                                .memoryCacheKey(file.absolutePath)
+                                .build(),
+                            contentDescription = file.name,
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    Modifier.fillMaxWidth().height(90.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(tc.copy(0.1f)),
+                                    Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = tc, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                }
+                            },
+                            error = {
+                                Box(
+                                    Modifier.fillMaxWidth().height(90.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(tc.copy(0.1f)),
+                                    Alignment.Center
+                                ) {
+                                    Icon(ti, null, tint = tc, modifier = Modifier.size(36.dp))
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    }
+                    "VIDEO" -> {
+                        // Video thumbnail with play overlay
+                        var thumbnail by remember(file.absolutePath) { mutableStateOf<Bitmap?>(null) }
+                        LaunchedEffect(file.absolutePath) {
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val retriever = MediaMetadataRetriever()
+                                    retriever.setDataSource(file.absolutePath)
+                                    thumbnail = retriever.getFrameAtTime(1000000)
+                                    retriever.release()
+                                } catch (_: Exception) { }
+                            }
+                        }
+                        Box(
+                            Modifier.fillMaxWidth().height(90.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(tc.copy(0.1f)),
+                            Alignment.Center
+                        ) {
+                            if (thumbnail != null) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = thumbnail!!.asImageBitmap(),
+                                    contentDescription = "Video thumbnail",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                                )
+                                // Dark overlay
+                                Box(
+                                    Modifier.fillMaxSize()
+                                        .background(Color.Black.copy(0.3f), RoundedCornerShape(12.dp))
+                                )
+                            }
+                            // Play icon
+                            Box(
+                                Modifier.size(36.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(tc.copy(0.8f)),
+                                Alignment.Center
+                            ) {
+                                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                            }
+                        }
+                    }
+                    else -> {
+                        // Default icon for PDF/OTHER
+                        Box(
+                            Modifier.fillMaxWidth().height(72.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(tc.copy(0.1f)),
+                            Alignment.Center
+                        ) {
+                            Icon(ti, null, tint = tc, modifier = Modifier.size(36.dp))
+                        }
+                    }
                 }
                 // 3-dot menu
                 FileOptionsMenu(
@@ -422,11 +512,72 @@ private fun FileListItem(
             Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
-                Alignment.Center
-            ) {
-                Icon(ti, null, tint = tc, modifier = Modifier.size(24.dp))
+            when (file.type) {
+                "IMAGE" -> {
+                    // Thumbnail using Coil
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(file.absolutePath))
+                            .crossfade(true)
+                            .memoryCacheKey(file.absolutePath)
+                            .size(96)
+                            .build(),
+                        contentDescription = file.name,
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            Box(
+                                Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
+                                Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = tc, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            }
+                        },
+                        error = {
+                            Box(
+                                Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
+                                Alignment.Center
+                            ) { Icon(ti, null, tint = tc, modifier = Modifier.size(24.dp)) }
+                        },
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                "VIDEO" -> {
+                    // Video thumbnail with play icon
+                    var thumbnail by remember(file.absolutePath) { mutableStateOf<Bitmap?>(null) }
+                    LaunchedEffect(file.absolutePath) {
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val retriever = MediaMetadataRetriever()
+                                retriever.setDataSource(file.absolutePath)
+                                thumbnail = retriever.getFrameAtTime(1000000)
+                                retriever.release()
+                            } catch (_: Exception) { }
+                        }
+                    }
+                    Box(
+                        Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
+                        Alignment.Center
+                    ) {
+                        if (thumbnail != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = thumbnail!!.asImageBitmap(),
+                                contentDescription = "Video thumbnail",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                            )
+                            Box(Modifier.fillMaxSize().background(Color.Black.copy(0.25f), RoundedCornerShape(12.dp)))
+                        }
+                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                }
+                else -> {
+                    Box(
+                        Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tc.copy(0.1f)),
+                        Alignment.Center
+                    ) {
+                        Icon(ti, null, tint = tc, modifier = Modifier.size(24.dp))
+                    }
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
