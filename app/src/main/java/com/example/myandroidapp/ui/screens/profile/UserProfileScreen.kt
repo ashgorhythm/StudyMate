@@ -179,11 +179,14 @@ fun UserProfileScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
                             )
-                            Text(
-                                text = "Student",
-                                fontSize = 14.sp,
-                                color = TextMuted
-                            )
+                            if (profile.username.isNotBlank()) {
+                                Text(
+                                    text = "@${profile.username}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = accent.copy(0.8f)
+                                )
+                            }
                         }
                     }
 

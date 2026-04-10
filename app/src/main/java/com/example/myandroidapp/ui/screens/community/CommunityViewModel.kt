@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myandroidapp.data.firebase.FirebaseSocialService
 import com.example.myandroidapp.data.model.*
 import com.example.myandroidapp.data.preferences.UserPreferences
+import com.example.myandroidapp.util.MediaCompressor
 import com.example.myandroidapp.util.ScannedFile
 import com.example.myandroidapp.util.StudyBuddyFolder
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ data class CommunityPost(
     val communityId: String = "",
     val authorMemberId: String = "",
     val author: String,
+    val authorUsername: String = "",  // @handle for the author
     val authorInitials: String,
     val timeAgo: String,
     val title: String,
@@ -72,7 +74,8 @@ data class CommunityUiState(
     val searchQuery: String = "",
     val isSearching: Boolean = false,
     val expandedPostId: String? = null,
-    val studentName: String = "You",
+    val studentName: String = "",
+    val username: String = "",           // current user's @handle
     val currentMemberId: String = "",
     val communities: List<CommunityInfo> = emptyList(),
     val selectedCommunityId: String? = null,
@@ -83,7 +86,11 @@ data class CommunityUiState(
     val chatMessages: List<ChatMessageEntity> = emptyList(),
     val chatTarget: UserProfileEntity? = null,
     val unreadCount: Int = 0,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val isUploading: Boolean = false,
+    val uploadProgress: Float = 0f,     // 0..100 progress during media compression
+    val selectedGroupId: String? = null,
+    val communityMembers: List<CommunityMemberEntity> = emptyList()
 )
 
 enum class CommunityTab { HUB, FEED, COMMUNITIES, FRIENDS }
@@ -109,9 +116,17 @@ class CommunityViewModel(
         viewModelScope.launch {
             try {
                 val name = prefs.studentName.first()
-                val profile = firebase.getOrCreateProfile(name.ifBlank { "Student" })
+                val displayName = name.ifBlank { "New User" }
+                val profile = firebase.getOrCreateProfile(displayName)
+
+                // Cache username locally
+                if (profile.username.isNotBlank()) {
+                    prefs.updateUsername(profile.username)
+                }
+
                 _uiState.update { it.copy(
-                    studentName = name.ifBlank { "Student" },
+                    studentName = displayName,
+                    username = profile.username,
                     currentMemberId = profile.memberId,
                     isLoading = false
                 )}
@@ -126,7 +141,7 @@ class CommunityViewModel(
         // Listen for name changes
         viewModelScope.launch {
             prefs.studentName.collect { name ->
-                _uiState.update { it.copy(studentName = name) }
+                _uiState.update { it.copy(studentName = name.ifBlank { "New User" }) }
             }
         }
 
@@ -138,9 +153,6 @@ class CommunityViewModel(
         viewModelScope.launch {
             firebase.observePosts().collect { rawPosts ->
                 allPosts = rawPosts.map { it.toUiPost() }
-                if (allPosts.isEmpty()) {
-                    seedInitialData()
-                }
                 applyFilters()
             }
         }
@@ -202,6 +214,23 @@ class CommunityViewModel(
     fun setTab(tab: CommunityTab) { _uiState.update { it.copy(currentTab = tab) } }
     fun selectCommunity(communityId: String?) { _uiState.update { it.copy(selectedCommunityId = communityId) }; applyFilters() }
 
+    fun openGroupDetail(communityId: String) {
+        _uiState.update { it.copy(selectedGroupId = communityId) }
+        loadCommunityMembers(communityId)
+    }
+
+    fun closeGroupDetail() {
+        _uiState.update { it.copy(selectedGroupId = null, communityMembers = emptyList()) }
+    }
+
+    private fun loadCommunityMembers(communityId: String) {
+        viewModelScope.launch {
+            firebase.observeCommunityMembers(communityId).collect { members ->
+                _uiState.update { it.copy(communityMembers = members) }
+            }
+        }
+    }
+
     private fun applyFilters() {
         val state = _uiState.value
         var filtered = allPosts
@@ -230,17 +259,40 @@ class CommunityViewModel(
             // Upload attachment to Firebase Storage if URI provided
             if (attachmentUri != null) {
                 try {
+                    _uiState.update { it.copy(isUploading = true, uploadProgress = 0f) }
                     val uri = Uri.parse(attachmentUri)
                     val name = attachmentName ?: "attachment"
-                    val downloadUrl = firebase.uploadAttachment(uri, name)
+                    val mediaType = MediaCompressor.getMediaTypeFromName(name)
+
+                    // Compress based on media type
+                    val compressedUri = when (mediaType) {
+                        "IMAGE" -> {
+                            _uiState.update { it.copy(uploadProgress = 10f) }
+                            MediaCompressor.compressImage(context, uri)
+                        }
+                        "VIDEO" -> {
+                            MediaCompressor.compressVideo(context, uri) { progress ->
+                                _uiState.update { it.copy(uploadProgress = progress * 0.7f) }
+                            }
+                        }
+                        else -> uri // No compression for PDFs, etc.
+                    }
+
+                    _uiState.update { it.copy(uploadProgress = 75f) }
+                    val downloadUrl = firebase.uploadAttachment(compressedUri, name)
                     finalUri = downloadUrl
+                    _uiState.update { it.copy(uploadProgress = 100f) }
                 } catch (_: Exception) { /* keep local URI as fallback */ }
+                finally {
+                    _uiState.update { it.copy(isUploading = false, uploadProgress = 0f) }
+                }
             }
 
             val entity = CommunityPostEntity(
                 communityId = state.selectedCommunityId ?: "",
                 authorMemberId = state.currentMemberId,
                 author = state.studentName,
+                authorUsername = state.username,
                 authorInitials = state.studentName.take(2).uppercase(),
                 timeAgoLabel = "just now",
                 title = title, body = body,
@@ -382,33 +434,7 @@ class CommunityViewModel(
         return name to size
     }
 
-    // ═══════ Seeding ═══════
 
-    private fun seedInitialData() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val memberId = _uiState.value.currentMemberId
-            val hub = CommunityEntity(name = "University Hub", description = "The main community for all students.", isPublic = true, creatorId = "system", memberCount = 1, iconEmoji = "🎓")
-            firebase.createCommunity(hub)
-
-            val cs = CommunityEntity(name = "CS Study Group", description = "Private group for CS students.", isPublic = false, creatorId = "system", memberCount = 1, iconEmoji = "💻")
-            firebase.createCommunity(cs)
-
-            val exam = CommunityEntity(name = "Exam Warriors", description = "Preparing for exams together!", isPublic = true, creatorId = "system", memberCount = 1, iconEmoji = "⚔️")
-            firebase.createCommunity(exam)
-
-            if (memberId.isNotBlank()) {
-                firebase.insertMember(CommunityMemberEntity(communityId = hub.communityId, memberId = memberId, displayName = _uiState.value.studentName, role = CommunityRole.MEMBER, status = MembershipStatus.APPROVED))
-            }
-
-            // Seed posts
-            listOf(
-                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "StudyBot", authorInitials = "SB", timeAgoLabel = "2h ago", title = "Welcome to the University Community! 🎓", body = "Share tips, ask questions, and connect with fellow students!", tag = "General", upvotes = 42),
-                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Alex Chen", authorInitials = "AC", timeAgoLabel = "4h ago", title = "Best way to study for finals? 📚", body = "I have 3 exams next week. What study techniques work best?", tag = "Question", upvotes = 28),
-                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Maya Patel", authorInitials = "MP", timeAgoLabel = "6h ago", title = "Free Calculus Notes — Chapter 1-8 🧮", body = "Complete calculus notes covering limits, derivatives, integrals, and series.", tag = "Notes", upvotes = 156),
-                CommunityPostEntity(communityId = hub.communityId, authorMemberId = "system", author = "Dr. Smith", authorInitials = "DS", timeAgoLabel = "1d ago", title = "📌 How to use Active Recall effectively", body = "Active recall is 3x more effective than re-reading! Close notes → recall → check → repeat.", tag = "Study Tips", upvotes = 213),
-            ).forEach { firebase.addPost(it) }
-        }
-    }
 
     private fun Map<String, Any>.toUiPost(): CommunityPost {
         return CommunityPost(
@@ -416,6 +442,7 @@ class CommunityViewModel(
             communityId = this["communityId"] as? String ?: "",
             authorMemberId = this["authorMemberId"] as? String ?: "",
             author = this["author"] as? String ?: "Unknown",
+            authorUsername = this["authorUsername"] as? String ?: "",
             authorInitials = this["authorInitials"] as? String ?: "?",
             timeAgo = this["timeAgoLabel"] as? String ?: "",
             title = this["title"] as? String ?: "",

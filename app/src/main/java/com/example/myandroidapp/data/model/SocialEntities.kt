@@ -48,7 +48,9 @@ data class CommunityMemberEntity(
 data class UserProfileEntity(
     @PrimaryKey val memberId: String = UUID.randomUUID().toString().take(8).uppercase(),
     val displayName: String,
+    val username: String = "",   // unique @handle, e.g. "a7x92k"
     val bio: String = "",
+    val avatarUrl: String = "",  // profile picture URL (future use)
     val studyStreak: Int = 0,
     val totalStudyHours: Int = 0,
     val isCurrentUser: Boolean = false,

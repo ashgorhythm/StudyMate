@@ -67,7 +67,11 @@ fun FriendsTab(
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(profile?.displayName ?: "Unknown", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                            Text("Wants to connect", fontSize = 11.sp, color = TextMuted)
+                            if (profile != null && profile.username.isNotBlank()) {
+                                Text("@${profile.username}", fontSize = 11.sp, color = TealPrimary.copy(0.6f))
+                            } else {
+                                Text("Wants to connect", fontSize = 11.sp, color = TextMuted)
+                            }
                         }
                         IconButton(onClick = { onAccept(req.id) }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Check, null, tint = GreenSuccess)
@@ -123,6 +127,9 @@ private fun FriendCard(friend: UserProfileEntity, onChat: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(friend.displayName, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                if (friend.username.isNotBlank()) {
+                    Text("@${friend.username}", fontSize = 11.sp, color = TealPrimary.copy(0.6f))
+                }
                 if (friend.bio.isNotBlank()) {
                     Text(friend.bio, fontSize = 11.sp, color = TextMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

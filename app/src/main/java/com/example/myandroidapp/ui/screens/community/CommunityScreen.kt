@@ -73,6 +73,31 @@ fun CommunityScreen(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(NavyDark, NavyMedium.copy(0.5f), NavyDark)))
     ) {
+        // ── Group Detail Screen Overlay ──
+        val selectedGroupId = state.selectedGroupId
+        if (selectedGroupId != null) {
+            val groupInfo = state.communities.find { it.entity.communityId == selectedGroupId }
+            if (groupInfo != null) {
+                CommunityGroupDetailScreen(
+                    communityInfo = groupInfo,
+                    posts = state.posts,
+                    members = state.communityMembers,
+                    currentMemberId = state.currentMemberId,
+                    onBack = { viewModel.closeGroupDetail() },
+                    onNewPost = { showNewPostDialog = true },
+                    onExpandPost = { viewModel.expandPost(it) },
+                    expandedPostId = state.expandedPostId,
+                    onUpvote = { viewModel.toggleUpvote(it) },
+                    onDownvote = { viewModel.toggleDownvote(it) },
+                    onComment = { commentSheetPost = state.posts.find { p -> p.id == it } },
+                    onSave = { viewModel.toggleSavePost(it) },
+                    onProfileClick = { memberId -> onNavigateToProfile(memberId) },
+                    onManageMembers = { manageCommunityId = selectedGroupId; viewModel.loadPendingRequests(selectedGroupId) }
+                )
+                return@Box
+            }
+        }
+
         Row(Modifier.fillMaxSize()) {
             // ── Animated Navigation Rail ──
             CommunityNavigationRail(
@@ -104,7 +129,8 @@ fun CommunityScreen(
                         onNavigateToFeed = { viewModel.setTab(CommunityTab.FEED) },
                         onNavigateToGroups = { viewModel.setTab(CommunityTab.COMMUNITIES) },
                         onNavigateToFriends = { viewModel.setTab(CommunityTab.FRIENDS) },
-                        onNewPost = { showNewPostDialog = true }
+                        onNewPost = { showNewPostDialog = true },
+                        onOpenGroupDetail = { communityId -> viewModel.openGroupDetail(communityId) }
                     )
                     CommunityTab.FEED -> FeedContent(
                         state = state,
@@ -124,7 +150,8 @@ fun CommunityScreen(
                         onJoin = { viewModel.joinCommunity(it) },
                         onSelect = { viewModel.selectCommunity(it); viewModel.setTab(CommunityTab.FEED) },
                         onCreate = { showCreateCommunity = true },
-                        onManageMembers = { manageCommunityId = it; viewModel.loadPendingRequests(it) }
+                        onManageMembers = { manageCommunityId = it; viewModel.loadPendingRequests(it) },
+                        onOpenGroupDetail = { communityId -> viewModel.openGroupDetail(communityId) }
                     )
                     CommunityTab.FRIENDS -> FriendsTab(
                         friends = state.friends,
@@ -172,6 +199,60 @@ fun CommunityScreen(
                 showNewPostDialog = false
             }
         )
+    }
+
+    // ── Upload progress overlay ──
+    if (state.isUploading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(0.6f))
+                .clickable(enabled = false) { },
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(SurfaceCard),
+                modifier = Modifier.padding(40.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        color = TealPrimary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = when {
+                            state.uploadProgress < 70f -> "Compressing media…"
+                            state.uploadProgress < 100f -> "Uploading…"
+                            else -> "Almost done…"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { state.uploadProgress / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = TealPrimary,
+                        trackColor = TealPrimary.copy(0.15f)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${state.uploadProgress.toInt()}%",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                }
+            }
+        }
     }
 
     commentSheetPost?.let { post ->
@@ -560,6 +641,13 @@ private fun PostCard(
                         color = TealPrimary,
                         modifier = Modifier.clickable(onClick = onProfileClick)
                     )
+                    if (post.authorUsername.isNotBlank()) {
+                        Text(
+                            "@${post.authorUsername}",
+                            fontSize = 11.sp,
+                            color = TealPrimary.copy(0.6f)
+                        )
+                    }
                     Text(post.timeAgo, fontSize = 11.sp, color = TextMuted)
                 }
                 val tagColor = getTagColor(post.tag)

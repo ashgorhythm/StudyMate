@@ -49,15 +49,55 @@ class FirebaseSocialService {
         val doc = profilesRef.document(uid).get().await()
         if (doc.exists()) {
             val existing = doc.toProfile()
-            if (existing != null) return existing
+            if (existing != null) {
+                // Backfill username if profile exists but has no username
+                if (existing.username.isBlank()) {
+                    val username = generateUniqueUsername(uid)
+                    profilesRef.document(uid).update("username", username).await()
+                    return existing.copy(username = username)
+                }
+                return existing
+            }
         }
+        val username = generateUniqueUsername(uid)
         val profile = UserProfileEntity(
             memberId = uid,
             displayName = displayName,
+            username = username,
             isCurrentUser = true
         )
         profilesRef.document(uid).set(profile.toMap()).await()
         return profile
+    }
+
+    /**
+     * Generates a unique 6-char alphanumeric username from the UID hash.
+     * If collision detected, appends incrementing suffix until unique.
+     */
+    private suspend fun generateUniqueUsername(uid: String): String {
+        val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        val base = uid.hashCode().toUInt().toString(36).take(6).padEnd(6, chars[(uid.length % chars.length)])
+        var candidate = base
+        var attempt = 0
+        while (true) {
+            val existing = profilesRef.whereEqualTo("username", candidate).get().await()
+            if (existing.isEmpty) return candidate
+            attempt++
+            candidate = base.take(4) + attempt.toString(36).take(2).padStart(2, '0')
+            if (attempt > 100) return uid.take(8).lowercase() // ultimate fallback
+        }
+    }
+
+    suspend fun updateUsername(memberId: String, newUsername: String): Boolean {
+        // Check uniqueness
+        val existing = profilesRef.whereEqualTo("username", newUsername).get().await()
+        if (!existing.isEmpty) return false // taken
+        profilesRef.document(memberId).update("username", newUsername).await()
+        return true
+    }
+
+    suspend fun updateDisplayName(memberId: String, newName: String) {
+        profilesRef.document(memberId).update("displayName", newName).await()
     }
 
     // ═══════ Communities ═══════
@@ -105,6 +145,17 @@ class FirebaseSocialService {
         val key = "${communityId}_${memberId}"
         membersRef.document(key).delete().await()
         refreshMemberCount(communityId)
+    }
+
+    fun observeCommunityMembers(communityId: String): Flow<List<CommunityMemberEntity>> = callbackFlow {
+        val reg = membersRef
+            .whereEqualTo("communityId", communityId)
+            .addSnapshotListener { snap, err ->
+                if (err != null) { close(err); return@addSnapshotListener }
+                val list = snap?.documents?.mapNotNull { it.toMember() } ?: emptyList()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
     }
 
     fun observePendingMembers(communityId: String): Flow<List<CommunityMemberEntity>> = callbackFlow {
@@ -338,14 +389,16 @@ class FirebaseSocialService {
 
     private fun UserProfileEntity.toMap() = mapOf(
         "memberId" to memberId, "displayName" to displayName,
-        "bio" to bio, "studyStreak" to studyStreak,
+        "username" to username, "bio" to bio, "avatarUrl" to avatarUrl,
+        "studyStreak" to studyStreak,
         "totalStudyHours" to totalStudyHours, "isCurrentUser" to isCurrentUser,
         "createdAt" to createdAt
     )
 
     private fun CommunityPostEntity.toMap() = mapOf(
         "communityId" to communityId, "authorMemberId" to authorMemberId,
-        "author" to author, "authorInitials" to authorInitials,
+        "author" to author, "authorUsername" to authorUsername,
+        "authorInitials" to authorInitials,
         "timeAgoLabel" to timeAgoLabel, "title" to title, "body" to body,
         "tag" to tag, "upvotes" to upvotes, "isUpvoted" to isUpvoted,
         "isDownvoted" to isDownvoted, "attachmentUri" to (attachmentUri ?: ""),
@@ -383,7 +436,9 @@ class FirebaseSocialService {
         return UserProfileEntity(
             memberId = d["memberId"] as? String ?: id,
             displayName = d["displayName"] as? String ?: "",
+            username = d["username"] as? String ?: "",
             bio = d["bio"] as? String ?: "",
+            avatarUrl = d["avatarUrl"] as? String ?: "",
             studyStreak = (d["studyStreak"] as? Number)?.toInt() ?: 0,
             totalStudyHours = (d["totalStudyHours"] as? Number)?.toInt() ?: 0,
             isCurrentUser = d["isCurrentUser"] as? Boolean ?: false,

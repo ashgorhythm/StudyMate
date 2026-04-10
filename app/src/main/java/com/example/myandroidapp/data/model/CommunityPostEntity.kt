@@ -9,6 +9,7 @@ data class CommunityPostEntity(
     val communityId: String = "", // links post to a community
     val authorMemberId: String = "", // unique member id
     val author: String,
+    val authorUsername: String = "", // @handle for the author
     val authorInitials: String,
     val timeAgoLabel: String,
     val title: String,

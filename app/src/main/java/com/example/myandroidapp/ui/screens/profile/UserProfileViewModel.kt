@@ -133,6 +133,7 @@ class UserProfileViewModel(
             communityId = this["communityId"] as? String ?: "",
             authorMemberId = this["authorMemberId"] as? String ?: "",
             author = this["author"] as? String ?: "Unknown",
+            authorUsername = this["authorUsername"] as? String ?: "",
             authorInitials = this["authorInitials"] as? String ?: "?",
             timeAgo = this["timeAgoLabel"] as? String ?: "",
             title = this["title"] as? String ?: "",

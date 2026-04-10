@@ -23,7 +23,7 @@ import com.example.myandroidapp.data.model.ChatMessageEntity
         CommunityEntity::class, CommunityMemberEntity::class,
         UserProfileEntity::class, FriendRequestEntity::class, ChatMessageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

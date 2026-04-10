@@ -128,6 +128,11 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    implementation(libs.media3.datasource)
+
+    // Media compression
+    implementation(libs.light.compressor)
+    implementation(libs.coil.video)
 
     // Testing
     testImplementation(libs.junit)

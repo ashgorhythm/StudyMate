@@ -1,10 +1,7 @@
 package com.example.myandroidapp.ui.screens.community
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -29,15 +25,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
+import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.example.myandroidapp.ui.screens.library.viewer.FileViewerScreen
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.util.ScannedFile
-import com.example.myandroidapp.util.StudyBuddyFolder
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
+import java.security.MessageDigest
 import java.util.UUID
 
 // ═══════════════════════════════════════════════════════
@@ -225,23 +223,7 @@ private fun VideoPreviewCard(
     isDownloading: Boolean
 ) {
     val context = LocalContext.current
-
-    // Try to get video thumbnail
-    var thumbnail by remember(url) { mutableStateOf<Bitmap?>(null) }
-    var thumbnailLoaded by remember(url) { mutableStateOf(false) }
-
-    LaunchedEffect(url) {
-        withContext(Dispatchers.IO) {
-            try {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(url, hashMapOf<String, String>())
-                thumbnail = retriever.getFrameAtTime(1000000) // 1 second
-                retriever.release()
-            } catch (_: Exception) { }
-            thumbnailLoaded = true
-        }
-    }
-
+    // Use Coil with VideoFrameDecoder for proper Firebase URL thumbnail
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -253,24 +235,36 @@ private fun VideoPreviewCard(
             Modifier.fillMaxWidth().height(180.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Background: thumbnail or dark placeholder
-            if (thumbnail != null) {
-                androidx.compose.foundation.Image(
-                    bitmap = thumbnail!!.asImageBitmap(),
-                    contentDescription = "Video thumbnail",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
-                )
-            } else {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(listOf(NavyMedium, NavyLight)),
-                            RoundedCornerShape(14.dp)
-                        )
-                )
-            }
+            // Video thumbnail via Coil VideoFrameDecoder
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(url)
+                    .crossfade(true)
+                    .memoryCacheKey("video_thumb_$url")
+                    .decoderFactory(VideoFrameDecoder.Factory())
+                    .build(),
+                contentDescription = "Video thumbnail",
+                contentScale = ContentScale.Crop,
+                loading = {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(listOf(NavyMedium, NavyLight)),
+                                RoundedCornerShape(14.dp)
+                            )
+                    )
+                },
+                error = {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(listOf(NavyMedium, NavyLight)),
+                                RoundedCornerShape(14.dp)
+                            )
+                    )
+                },
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+            )
 
             // Dark overlay
             Box(
@@ -467,7 +461,9 @@ private fun DownloadingOverlay() {
 }
 
 // ─────────────────────────────────────────────────────────
-// ── File download helper (Firebase Storage URL → temp file)
+// ── File download helper (Firebase Storage URL → cached file)
+// Uses Firebase Storage SDK for proper auth token handling.
+// Caches files by URL hash to avoid re-downloading.
 // ─────────────────────────────────────────────────────────
 
 private fun downloadAttachment(
@@ -482,19 +478,38 @@ private fun downloadAttachment(
             val cacheDir = File(context.cacheDir, "media_cache")
             if (!cacheDir.exists()) cacheDir.mkdirs()
 
-            // Create a unique temp file
+            // Create cache key from URL hash
+            val urlHash = MessageDigest.getInstance("MD5")
+                .digest(url.toByteArray())
+                .joinToString("") { "%02x".format(it) }
             val ext = fileName.substringAfterLast('.', "tmp")
-            val tempFile = File(cacheDir, "${UUID.randomUUID()}.$ext")
+            val cachedFile = File(cacheDir, "${urlHash}.$ext")
 
-            // Download
-            URL(url).openStream().use { input ->
-                tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+            // Skip download if already cached
+            if (cachedFile.exists() && cachedFile.length() > 0) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    onResult(cachedFile)
                 }
+                return@Thread
             }
 
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                onResult(tempFile)
+            // Download via Firebase Storage SDK (handles auth tokens)
+            if (url.contains("firebasestorage.googleapis.com") ||
+                url.contains("firebase") ||
+                url.startsWith("gs://")
+            ) {
+                val storageRef = FirebaseStorage.getInstance().getReferenceFromUrl(url)
+                storageRef.getFile(cachedFile)
+                    .addOnSuccessListener {
+                        onResult(cachedFile)
+                    }
+                    .addOnFailureListener {
+                        // Fallback to direct HTTP download
+                        downloadViaHttp(url, cachedFile, onResult)
+                    }
+            } else {
+                // Non-Firebase URL — use standard HTTP
+                downloadViaHttp(url, cachedFile, onResult)
             }
         } catch (e: Exception) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -502,4 +517,25 @@ private fun downloadAttachment(
             }
         }
     }.start()
+}
+
+private fun downloadViaHttp(
+    url: String,
+    targetFile: File,
+    onResult: (File?) -> Unit
+) {
+    try {
+        java.net.URL(url).openStream().use { input ->
+            targetFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            onResult(targetFile)
+        }
+    } catch (e: Exception) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            onResult(null)
+        }
+    }
 }

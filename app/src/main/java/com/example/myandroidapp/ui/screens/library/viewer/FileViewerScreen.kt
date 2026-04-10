@@ -79,17 +79,27 @@ fun VideoPlayerScreen(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val javaFile = remember(scannedFile.absolutePath) { File(scannedFile.absolutePath) }
-    val fileUri = remember(javaFile) {
-        try {
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", javaFile)
-        } catch (_: Exception) { Uri.fromFile(javaFile) }
+    val isRemoteUrl = scannedFile.absolutePath.startsWith("http://") ||
+            scannedFile.absolutePath.startsWith("https://")
+
+    val mediaItem = remember(scannedFile.absolutePath) {
+        if (isRemoteUrl) {
+            // Remote URL — use directly in ExoPlayer
+            MediaItem.fromUri(Uri.parse(scannedFile.absolutePath))
+        } else {
+            // Local file — use FileProvider for cross-process access
+            val javaFile = File(scannedFile.absolutePath)
+            val fileUri = try {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", javaFile)
+            } catch (_: Exception) { Uri.fromFile(javaFile) }
+            MediaItem.fromUri(fileUri)
+        }
     }
 
     // ExoPlayer instance
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(fileUri))
+            setMediaItem(mediaItem)
             prepare()
             playWhenReady = true
         }
@@ -204,8 +214,9 @@ fun VideoPlayerScreen(
                         IconButton(
                             onClick = {
                                 try {
+                                    val openUri = mediaItem.localConfiguration?.uri ?: return@IconButton
                                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(fileUri, "video/*")
+                                        setDataAndType(openUri, "video/*")
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(intent, "Open with…"))
@@ -311,8 +322,9 @@ fun VideoPlayerScreen(
                 Button(
                     onClick = {
                         try {
+                            val openUri = mediaItem.localConfiguration?.uri ?: return@Button
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(fileUri, "video/*")
+                                setDataAndType(openUri, "video/*")
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(Intent.createChooser(intent, "Open with…"))

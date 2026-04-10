@@ -40,7 +40,8 @@ fun CommunityHubScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToGroups: () -> Unit,
     onNavigateToFriends: () -> Unit,
-    onNewPost: () -> Unit
+    onNewPost: () -> Unit,
+    onOpenGroupDetail: (String) -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
 
@@ -55,6 +56,7 @@ fun CommunityHubScreen(
         // ── Hero Welcome Card ──
         HeroWelcomeCard(
             userName = state.studentName,
+            username = state.username,
             postCount = state.posts.size,
             friendCount = state.friends.size,
             communityCount = state.communities.size
@@ -147,7 +149,7 @@ fun CommunityHubScreen(
                     members = info.entity.memberCount,
                     description = info.entity.description,
                     isJoined = info.membershipStatus == com.example.myandroidapp.data.model.MembershipStatus.APPROVED,
-                    onClick = { onNavigateToGroups() }
+                    onClick = { onOpenGroupDetail(info.entity.communityId) }
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -189,6 +191,7 @@ fun CommunityHubScreen(
 @Composable
 private fun HeroWelcomeCard(
     userName: String,
+    username: String,
     postCount: Int,
     friendCount: Int,
     communityCount: Int
@@ -260,11 +263,19 @@ private fun HeroWelcomeCard(
                             color = TextSecondary
                         )
                         Text(
-                            userName.ifBlank { "Student" },
+                            userName,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = TextPrimary
                         )
+                        if (username.isNotBlank()) {
+                            Text(
+                                "@$username",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TealPrimary.copy(0.8f)
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -462,7 +473,7 @@ private fun FeaturedCommunityCard(
                     name,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
+                    color = TealPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -547,6 +558,9 @@ private fun CompactPostPreview(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(post.author, fontSize = 11.sp, color = TextMuted)
+                    if (post.authorUsername.isNotBlank()) {
+                        Text(" @${post.authorUsername}", fontSize = 11.sp, color = TealPrimary.copy(0.5f))
+                    }
                     Text(" · ", fontSize = 11.sp, color = TextMuted)
                     Text(post.timeAgo, fontSize = 11.sp, color = TextMuted)
                 }

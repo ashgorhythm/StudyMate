@@ -31,7 +31,8 @@ fun CommunitiesTab(
     onJoin: (String) -> Unit,
     onSelect: (String) -> Unit,
     onCreate: () -> Unit,
-    onManageMembers: (String) -> Unit
+    onManageMembers: (String) -> Unit,
+    onOpenGroupDetail: (String) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
@@ -96,7 +97,8 @@ fun CommunitiesTab(
                 currentMemberId = currentMemberId,
                 onJoin = { onJoin(info.entity.communityId) },
                 onSelect = { onSelect(info.entity.communityId) },
-                onManage = { onManageMembers(info.entity.communityId) }
+                onManage = { onManageMembers(info.entity.communityId) },
+                onNameClick = { onOpenGroupDetail(info.entity.communityId) }
             )
             Spacer(Modifier.height(10.dp))
         }
@@ -109,7 +111,8 @@ private fun CommunityListItem(
     currentMemberId: String,
     onJoin: () -> Unit,
     onSelect: () -> Unit,
-    onManage: () -> Unit
+    onManage: () -> Unit,
+    onNameClick: () -> Unit = {}
 ) {
     val c = info.entity
     val isMember = info.membershipStatus == MembershipStatus.APPROVED
@@ -135,7 +138,17 @@ private fun CommunityListItem(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(c.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                        Text(
+                            c.name,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TealPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f, false)
+                                .clickable(onClick = onNameClick)
+                        )
                         Spacer(Modifier.width(6.dp))
                         if (!c.isPublic) Icon(Icons.Default.Lock, null, tint = AmberAccent, modifier = Modifier.size(14.dp))
                     }
@@ -271,7 +284,7 @@ fun CreateCommunityDialog(
 }
 
 // ─────────────────────────────────────────────────────────
-// Manage Members Dialog (for admins/mods)
+// Manage Members Dialog — Intuitive member request management
 // ─────────────────────────────────────────────────────────
 
 @Composable
@@ -285,47 +298,225 @@ fun ManageMembersDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NavyMedium,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         title = {
             Column {
-                Text("Manage Members", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text(communityName, color = TextMuted, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(listOf(PurpleAccent.copy(0.2f), TealPrimary.copy(0.15f)))
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.ManageAccounts, null, tint = PurpleAccent, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Member Requests", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                        Text(communityName, color = TextMuted, fontSize = 12.sp)
+                    }
+                }
+                if (pendingRequests.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    // Request count badge
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(AmberAccent.copy(0.1f), AmberAccent.copy(0.05f))
+                                )
+                            )
+                            .border(1.dp, AmberAccent.copy(0.2f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Notifications, null, tint = AmberAccent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${pendingRequests.size} pending request${if (pendingRequests.size > 1) "s" else ""} awaiting review",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AmberAccent
+                            )
+                        }
+                    }
+                }
             }
         },
         text = {
-            Column {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 if (pendingRequests.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    // Empty state with illustration
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("✅", fontSize = 32.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Text("No pending requests", color = TextMuted, fontSize = 14.sp)
+                            Box(
+                                Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.radialGradient(
+                                            listOf(GreenSuccess.copy(0.15f), GreenSuccess.copy(0.03f))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✅", fontSize = 36.sp)
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "All caught up!",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "No pending requests at the moment",
+                                fontSize = 13.sp,
+                                color = TextMuted
+                            )
                         }
                     }
                 } else {
-                    Text("${pendingRequests.size} pending request(s)", fontSize = 13.sp, color = AmberAccent, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(12.dp))
                     pendingRequests.forEach { member ->
+                        // Enhanced member request card
                         Card(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(SurfaceCard)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(SurfaceCard),
+                            border = BorderStroke(1.dp, PurpleAccent.copy(0.1f))
                         ) {
-                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    Modifier.size(36.dp).clip(CircleShape).background(PurpleAccent.copy(0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) { Text(member.displayName.take(1).uppercase(), color = PurpleAccent, fontWeight = FontWeight.Bold) }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(member.displayName, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-                                    Text("ID: ${member.memberId}", fontSize = 10.sp, color = TextMuted)
+                            Column(Modifier.padding(14.dp)) {
+                                // Profile row
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Gradient avatar
+                                    Box(
+                                        Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    listOf(
+                                                        PurpleAccent.copy(0.3f),
+                                                        TealPrimary.copy(0.2f)
+                                                    )
+                                                )
+                                            )
+                                            .border(1.5.dp, PurpleAccent.copy(0.3f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            member.displayName.take(1).uppercase(),
+                                            fontSize = 20.sp,
+                                            color = PurpleAccent,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            member.displayName,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.Schedule, null,
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                "Requested to join",
+                                                fontSize = 11.sp,
+                                                color = TextMuted
+                                            )
+                                        }
+                                    }
+                                    // Pending badge
+                                    Box(
+                                        Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(AmberAccent.copy(0.1f))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            "PENDING",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AmberAccent,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { onApprove(member.memberId) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.Check, null, tint = GreenSuccess, modifier = Modifier.size(20.dp))
-                                }
-                                IconButton(onClick = { onReject(member.memberId) }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.Close, null, tint = RedError, modifier = Modifier.size(20.dp))
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // Action buttons row (full width, obvious)
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Reject button
+                                    OutlinedButton(
+                                        onClick = { onReject(member.memberId) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.dp, RedError.copy(0.3f)),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = RedError
+                                        ),
+                                        contentPadding = PaddingValues(vertical = 10.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close, null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "Decline",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+
+                                    // Approve button
+                                    Button(
+                                        onClick = { onApprove(member.memberId) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = GreenSuccess,
+                                            contentColor = NavyDark
+                                        ),
+                                        contentPadding = PaddingValues(vertical = 10.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Check, null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "Approve",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -333,6 +524,15 @@ fun ManageMembersDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done", color = TealPrimary, fontWeight = FontWeight.Bold) } }
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(TealPrimary.copy(0.08f))
+            ) {
+                Text("Done", color = TealPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
     )
 }
