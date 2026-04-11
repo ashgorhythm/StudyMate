@@ -93,7 +93,7 @@ data class CommunityUiState(
     val communityMembers: List<CommunityMemberEntity> = emptyList()
 )
 
-enum class CommunityTab { HUB, FEED, COMMUNITIES, FRIENDS }
+enum class CommunityTab { HUB, FEED, COMMUNITIES, FRIENDS, INBOX }
 
 // ═══════════════════════════════════════════════════════
 // ── ViewModel (Firebase-backed) ──
@@ -195,6 +195,16 @@ class CommunityViewModel(
                     req to firebase.getProfile(req.fromMemberId)
                 }
                 _uiState.update { it.copy(incomingFriendRequests = withProfiles) }
+            }
+        }
+
+        // Watch unread message count for Inbox badge
+        viewModelScope.launch {
+            val memberId = _uiState.value.currentMemberId
+            if (memberId.isBlank()) return@launch
+            firebase.observeAllConversations(memberId).collect { messages ->
+                val unread = messages.count { !it.isRead && it.senderId != memberId }
+                _uiState.update { it.copy(unreadCount = unread) }
             }
         }
     }

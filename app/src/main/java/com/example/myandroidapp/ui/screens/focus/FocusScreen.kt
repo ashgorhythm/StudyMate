@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -677,7 +678,15 @@ private fun DurationSelector(
                 FilterChip(
                     selected = isSelected,
                     onClick = { if (!isRunning) onSelect(min) },
-                    label = { Text("${min}m", fontWeight = FontWeight.Medium, fontSize = 13.sp) },
+                    label = {
+                        Text(
+                            text = "${min}m",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
                     enabled = !isRunning,
                     modifier = Modifier.weight(1f),
                     colors = FilterChipDefaults.filterChipColors(
@@ -710,7 +719,13 @@ private fun DurationSelector(
             FilterChip(
                 selected = isCustom,
                 onClick = { if (!isRunning) onCustom() },
-                label = { Text(customLabel) },
+                label = {
+                    Text(
+                        text = customLabel,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
                 leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(16.dp)) },
                 enabled = !isRunning,
                 colors = FilterChipDefaults.filterChipColors(
@@ -745,41 +760,61 @@ private fun AmbientSoundSelector(selected: String, onSelect: (String) -> Unit) {
     Column {
         Text("Ambient Sound", fontSize = 14.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(10.dp))
-        androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            sounds.forEach { sound ->
-                val isSelected = selected == sound.name
-                Card(
+        val soundCard: @Composable (Sound) -> Unit = { sound ->
+            val isSelected = selected == sound.name
+            Card(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onSelect(sound.name) },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) TealPrimary.copy(alpha = 0.15f) else SurfaceCard
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) TealPrimary.copy(alpha = 0.5f) else Color.Transparent
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onSelect(sound.name) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) TealPrimary.copy(alpha = 0.15f) else SurfaceCard
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSelected) TealPrimary.copy(alpha = 0.5f) else Color.Transparent
-                    )
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Text(sound.icon, fontSize = 24.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            sound.name,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) TealPrimary else TextSecondary
-                        )
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        sound.name,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) TealPrimary else TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            sounds.take(4).forEach { sound ->
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    soundCard(sound)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            sounds.drop(4).firstOrNull()?.let { soundCard(it) }
         }
     }
 }

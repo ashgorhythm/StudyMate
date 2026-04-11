@@ -27,6 +27,9 @@ import com.example.myandroidapp.ui.screens.settings.SettingsViewModelFactory
 import com.example.myandroidapp.ui.screens.community.CommunityScreen
 import com.example.myandroidapp.ui.screens.community.CommunityViewModel
 import com.example.myandroidapp.ui.screens.community.CommunityViewModelFactory
+import com.example.myandroidapp.ui.screens.inbox.InboxScreen
+import com.example.myandroidapp.ui.screens.inbox.InboxViewModel
+import com.example.myandroidapp.ui.screens.inbox.InboxViewModelFactory
 import com.example.myandroidapp.ui.screens.profile.UserProfileScreen
 import com.example.myandroidapp.ui.screens.profile.UserProfileViewModel
 import com.example.myandroidapp.ui.screens.profile.UserProfileViewModelFactory
@@ -75,6 +78,9 @@ fun AppNavGraph(
                 viewModel = vm,
                 onNavigateToProfile = { memberId ->
                     navController.navigate(Screen.UserProfile.createRoute(memberId))
+                },
+                onNavigateToInbox = {
+                    navController.navigate(Screen.Inbox.route)
                 }
             )
         }
@@ -129,8 +135,27 @@ fun AppNavGraph(
             )
             UserProfileScreen(
                 viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onChat = { targetMemberId ->
+                    // Navigate to inbox — the inbox will handle opening the chat
+                    navController.navigate(Screen.Inbox.route)
+                }
+            )
+        }
+        // ── Inbox Screen ──
+        composable(Screen.Inbox.route) {
+            val currentMemberId = app.firebaseSocialService.currentUserId ?: ""
+            val vm: InboxViewModel = viewModel(
+                factory = InboxViewModelFactory(
+                    firebase = app.firebaseSocialService,
+                    currentMemberId = currentMemberId
+                )
+            )
+            InboxScreen(
+                viewModel = vm,
                 onBack = { navController.popBackStack() }
             )
         }
     }
 }
+

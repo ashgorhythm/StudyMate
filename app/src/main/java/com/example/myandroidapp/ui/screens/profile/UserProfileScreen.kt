@@ -288,7 +288,7 @@ fun UserProfileScreen(
                                     }
                                     FriendshipStatus.PENDING_RECEIVED -> {
                                         Button(
-                                            onClick = {},
+                                            onClick = { viewModel.acceptFriendRequest() },
                                             modifier = Modifier.weight(1f).height(48.dp),
                                             shape = RoundedCornerShape(14.dp),
                                             colors = ButtonDefaults.buttonColors(
@@ -300,17 +300,49 @@ fun UserProfileScreen(
                                             Spacer(Modifier.width(8.dp))
                                             Text("Accept Request", fontWeight = FontWeight.Bold)
                                         }
+                                        // Reject button
+                                        OutlinedButton(
+                                            onClick = { viewModel.rejectFriendRequest() },
+                                            modifier = Modifier.height(48.dp),
+                                            shape = RoundedCornerShape(14.dp),
+                                            border = BorderStroke(1.dp, RedError.copy(0.3f))
+                                        ) {
+                                            Icon(Icons.Default.Close, null, Modifier.size(18.dp), tint = RedError)
+                                        }
                                     }
                                     FriendshipStatus.FRIENDS -> {
-                                        OutlinedButton(
-                                            onClick = {},
-                                            modifier = Modifier.weight(1f).height(48.dp),
-                                            shape = RoundedCornerShape(14.dp),
-                                            border = BorderStroke(1.dp, GreenSuccess.copy(0.3f))
-                                        ) {
-                                            Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp), tint = GreenSuccess)
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("Friends", color = GreenSuccess, fontWeight = FontWeight.SemiBold)
+                                        // Unfriend dropdown
+                                        var showUnfriendMenu by remember { mutableStateOf(false) }
+                                        Box {
+                                            OutlinedButton(
+                                                onClick = { showUnfriendMenu = true },
+                                                modifier = Modifier.height(48.dp),
+                                                shape = RoundedCornerShape(14.dp),
+                                                border = BorderStroke(1.dp, GreenSuccess.copy(0.3f))
+                                            ) {
+                                                Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp), tint = GreenSuccess)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Friends", color = GreenSuccess, fontWeight = FontWeight.SemiBold)
+                                                Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp), tint = GreenSuccess)
+                                            }
+                                            DropdownMenu(
+                                                expanded = showUnfriendMenu,
+                                                onDismissRequest = { showUnfriendMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Icon(Icons.Default.PersonRemove, null, tint = RedError, modifier = Modifier.size(18.dp))
+                                                            Spacer(Modifier.width(8.dp))
+                                                            Text("Unfriend", color = RedError, fontWeight = FontWeight.SemiBold)
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        viewModel.unfriend()
+                                                        showUnfriendMenu = false
+                                                    }
+                                                )
+                                            }
                                         }
 
                                         Button(

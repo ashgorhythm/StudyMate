@@ -249,7 +249,7 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
     return when (screen) {
         Screen.Dashboard -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         Screen.Focus -> if (selected) Icons.Filled.Timer else Icons.Outlined.Timer
-        Screen.Community -> if (selected) Icons.Filled.Forum else Icons.Outlined.Forum
+        Screen.Community -> if (selected) Icons.Filled.Groups else Icons.Outlined.Groups
         Screen.Library -> if (selected) Icons.AutoMirrored.Filled.LibraryBooks else Icons.AutoMirrored.Outlined.LibraryBooks
         Screen.AiChat -> if (selected) Icons.Filled.SmartToy else Icons.Outlined.SmartToy
         Screen.Settings -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
@@ -259,5 +259,7 @@ private fun getNavIcon(screen: Screen, selected: Boolean): ImageVector {
         Screen.StudyPlanSetup -> if (selected) Icons.Filled.EventNote else Icons.Outlined.EventNote
         Screen.SuperUser -> if (selected) Icons.Filled.AdminPanelSettings else Icons.Outlined.AdminPanelSettings
         Screen.UserProfile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
+        Screen.Inbox -> if (selected) Icons.Filled.Mail else Icons.Outlined.MailOutline
+        Screen.ChatConversation -> if (selected) Icons.AutoMirrored.Filled.Chat else Icons.AutoMirrored.Outlined.Chat
     }
 }

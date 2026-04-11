@@ -21,18 +21,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.SubcomposeAsyncImage
 import com.example.myandroidapp.ui.theme.*
 import com.example.myandroidapp.util.ScannedFile
 import java.util.Locale
+import kotlin.math.abs
 
 // ═══════════════════════════════════════════════════════
 // ── Main Community Screen ──
@@ -42,7 +43,8 @@ import java.util.Locale
 @Composable
 fun CommunityScreen(
     viewModel: CommunityViewModel,
-    onNavigateToProfile: (String) -> Unit = {}
+    onNavigateToProfile: (String) -> Unit = {},
+    onNavigateToInbox: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -51,6 +53,7 @@ fun CommunityScreen(
     var commentSheetPost by remember { mutableStateOf<CommunityPost?>(null) }
     var showCreateCommunity by remember { mutableStateOf(false) }
     var manageCommunityId by remember { mutableStateOf<String?>(null) }
+    var selectedImagePost by remember { mutableStateOf<CommunityPost?>(null) }
 
     // Navigation rail state
     var isRailExpanded by remember { mutableStateOf(false) }
@@ -92,7 +95,8 @@ fun CommunityScreen(
                     onComment = { commentSheetPost = state.posts.find { p -> p.id == it } },
                     onSave = { viewModel.toggleSavePost(it) },
                     onProfileClick = { memberId -> onNavigateToProfile(memberId) },
-                    onManageMembers = { manageCommunityId = selectedGroupId; viewModel.loadPendingRequests(selectedGroupId) }
+                    onManageMembers = { manageCommunityId = selectedGroupId; viewModel.loadPendingRequests(selectedGroupId) },
+                    onImagePreview = { post -> selectedImagePost = post }
                 )
                 return@Box
             }
@@ -103,8 +107,13 @@ fun CommunityScreen(
             CommunityNavigationRail(
                 currentTab = state.currentTab,
                 isExpanded = isRailExpanded,
+                unreadCount = state.unreadCount,
                 onTabSelected = { tab ->
-                    viewModel.setTab(tab)
+                    if (tab == CommunityTab.INBOX) {
+                        onNavigateToInbox()
+                    } else {
+                        viewModel.setTab(tab)
+                    }
                     // Auto-collapse after selection on small screens
                     isRailExpanded = false
                 },
@@ -142,7 +151,8 @@ fun CommunityScreen(
                         onSave = { viewModel.toggleSavePost(it) },
                         onComment = { commentSheetPost = state.posts.find { p -> p.id == it } },
                         onClearCommunityFilter = { viewModel.selectCommunity(null) },
-                        onProfileClick = { memberId -> onNavigateToProfile(memberId) }
+                        onProfileClick = { memberId -> onNavigateToProfile(memberId) },
+                        onImagePreview = { post -> selectedImagePost = post }
                     )
                     CommunityTab.COMMUNITIES -> CommunitiesTab(
                         communities = state.communities,
@@ -160,6 +170,7 @@ fun CommunityScreen(
                         onReject = { viewModel.rejectFriendRequest(it) },
                         onChat = { viewModel.openChat(it) }
                     )
+                    CommunityTab.INBOX -> { /* Handled by onNavigateToInbox */ }
                 }
             }
         }
@@ -186,6 +197,16 @@ fun CommunityScreen(
                     .background(Color.Black.copy(0.3f))
             )
         }
+
+                selectedImagePost?.let { post ->
+                    CommunityImageViewerOverlay(
+                        post = post,
+                        onDismiss = { selectedImagePost = null },
+                        onUpvote = { viewModel.toggleUpvote(post.id) },
+                        onDownvote = { viewModel.toggleDownvote(post.id) },
+                        onSave = { viewModel.toggleSavePost(post.id) }
+                    )
+                }
     }
 
     // ── Dialogs ──
@@ -193,10 +214,12 @@ fun CommunityScreen(
         NewPostDialog(
             authorName = state.studentName,
             viewModel = viewModel,
-            onDismiss = { showNewPostDialog = false },
+            onDismiss = {
+                if (showNewPostDialog) showNewPostDialog = false
+            },
             onSubmit = { title, body, tag, attachment, uri, name ->
                 viewModel.addPost(title, body, tag, attachment, uri, name)
-                showNewPostDialog = false
+                if (showNewPostDialog) showNewPostDialog = false
             }
         )
     }
@@ -258,15 +281,25 @@ fun CommunityScreen(
     commentSheetPost?.let { post ->
         CommentSheet(
             post = post,
-            onDismiss = { commentSheetPost = null },
-            onAddComment = { viewModel.addComment(post.id, it); commentSheetPost = null }
+            onDismiss = {
+                if (commentSheetPost != null) commentSheetPost = null
+            },
+            onAddComment = {
+                viewModel.addComment(post.id, it)
+                if (commentSheetPost != null) commentSheetPost = null
+            }
         )
     }
 
     if (showCreateCommunity) {
         CreateCommunityDialog(
-            onDismiss = { showCreateCommunity = false },
-            onCreate = { n, d, p, e -> viewModel.createCommunity(n, d, p, e); showCreateCommunity = false }
+            onDismiss = {
+                if (showCreateCommunity) showCreateCommunity = false
+            },
+            onCreate = { n, d, p, e ->
+                viewModel.createCommunity(n, d, p, e)
+                if (showCreateCommunity) showCreateCommunity = false
+            }
         )
     }
 
@@ -277,7 +310,9 @@ fun CommunityScreen(
             pendingRequests = state.pendingRequests,
             onApprove = { viewModel.approveMember(cId, it) },
             onReject = { viewModel.rejectMember(cId, it) },
-            onDismiss = { manageCommunityId = null }
+            onDismiss = {
+                if (manageCommunityId != null) manageCommunityId = null
+            }
         )
     }
 }
@@ -295,15 +330,17 @@ private data class NavRailItem(
 
 private val navRailItems = listOf(
     NavRailItem(CommunityTab.HUB, "Hub", Icons.Outlined.Home, Icons.Filled.Home),
-    NavRailItem(CommunityTab.FEED, "Feed", Icons.Outlined.Forum, Icons.Filled.Forum),
+    NavRailItem(CommunityTab.FEED, "Feed", Icons.Outlined.RssFeed, Icons.Filled.RssFeed),
     NavRailItem(CommunityTab.COMMUNITIES, "Groups", Icons.Outlined.Groups, Icons.Filled.Groups),
-    NavRailItem(CommunityTab.FRIENDS, "Friends", Icons.Outlined.People, Icons.Filled.People)
+    NavRailItem(CommunityTab.FRIENDS, "Friends", Icons.Outlined.People, Icons.Filled.People),
+    NavRailItem(CommunityTab.INBOX, "Inbox", Icons.Outlined.ChatBubbleOutline, Icons.Filled.ChatBubble)
 )
 
 @Composable
 private fun CommunityNavigationRail(
     currentTab: CommunityTab,
     isExpanded: Boolean,
+    unreadCount: Int = 0,
     onTabSelected: (CommunityTab) -> Unit,
     onToggle: () -> Unit
 ) {
@@ -376,12 +413,37 @@ private fun CommunityNavigationRail(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = if (isExpanded) Arrangement.Start else Arrangement.Center
             ) {
-                Icon(
-                    imageVector = if (isSelected) item.selectedIcon else item.icon,
-                    contentDescription = item.label,
-                    tint = if (isSelected) TealPrimary else TextMuted,
-                    modifier = Modifier.size(22.dp)
-                )
+                // Show badge for Inbox with unread count
+                if (item.tab == CommunityTab.INBOX && unreadCount > 0) {
+                    BadgedBox(
+                        badge = {
+                            Badge(
+                                containerColor = PinkAccent,
+                                contentColor = Color.White
+                            ) {
+                                Text(
+                                    "$unreadCount",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) item.selectedIcon else item.icon,
+                            contentDescription = item.label,
+                            tint = if (isSelected) TealPrimary else TextMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = if (isSelected) item.selectedIcon else item.icon,
+                        contentDescription = item.label,
+                        tint = if (isSelected) TealPrimary else TextMuted,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
 
                 AnimatedVisibility(
                     visible = isExpanded,
@@ -453,12 +515,16 @@ private fun CommunityTopBar(
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onToggleRail) {
+                Icon(Icons.Default.Menu, contentDescription = "Open navigation", tint = TextSecondary)
+            }
             // Title with tab name
             val tabTitle = when (currentTab) {
                 CommunityTab.HUB -> "Community Hub"
                 CommunityTab.FEED -> "Feed"
                 CommunityTab.COMMUNITIES -> "Groups"
                 CommunityTab.FRIENDS -> "Friends"
+                CommunityTab.INBOX -> "Inbox"
             }
             Text(
                 tabTitle,
@@ -511,7 +577,8 @@ private fun FeedContent(
     onSave: (String) -> Unit,
     onComment: (String) -> Unit,
     onClearCommunityFilter: () -> Unit,
-    onProfileClick: (String) -> Unit = {}
+    onProfileClick: (String) -> Unit = {},
+    onImagePreview: (CommunityPost) -> Unit = {}
 ) {
     Column(
         Modifier
@@ -594,7 +661,8 @@ private fun FeedContent(
                     onDownvote = { onDownvote(post.id) },
                     onComment = { onComment(post.id) },
                     onSave = { onSave(post.id) },
-                    onProfileClick = { onProfileClick(post.authorMemberId) }
+                    onProfileClick = { onProfileClick(post.authorMemberId) },
+                    onImagePreview = { onImagePreview(post) }
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -616,7 +684,8 @@ private fun PostCard(
     onDownvote: () -> Unit,
     onComment: () -> Unit,
     onSave: () -> Unit,
-    onProfileClick: () -> Unit = {}
+    onProfileClick: () -> Unit = {},
+    onImagePreview: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onExpand() },
@@ -667,7 +736,8 @@ private fun PostCard(
                 Spacer(Modifier.height(8.dp))
                 MediaPreviewCard(
                     attachmentUri = post.attachmentUri ?: post.attachment?.absolutePath,
-                    attachmentName = post.attachmentName ?: post.attachment?.name
+                    attachmentName = post.attachmentName ?: post.attachment?.name,
+                    onImageClick = onImagePreview
                 )
             }
 
@@ -717,6 +787,101 @@ private fun PostCard(
                     CommentItem(c)
                     Spacer(Modifier.height(6.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommunityImageViewerOverlay(
+    post: CommunityPost,
+    onDismiss: () -> Unit,
+    onUpvote: () -> Unit,
+    onDownvote: () -> Unit,
+    onSave: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val imageUrl = post.attachmentUri ?: post.attachment?.absolutePath ?: return
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        SubcomposeAsyncImage(
+            model = imageUrl,
+            contentDescription = post.attachmentName ?: post.title,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+            loading = {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = TealPrimary)
+                }
+            }
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopStart)
+                .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
+                .padding(horizontal = 8.dp, vertical = 40.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(0.4f))
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(
+                onClick = onSave,
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(0.4f))
+            ) {
+                Icon(
+                    if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    "Save",
+                    tint = Color.White
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { android.widget.Toast.makeText(context, "Reported", android.widget.Toast.LENGTH_SHORT).show() },
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.copy(0.4f))
+            ) {
+                Icon(Icons.Default.Flag, "Report", tint = Color.White)
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onUpvote) {
+                Icon(Icons.Default.ThumbUp, null, tint = if (post.isUpvoted) TealPrimary else Color.White)
+            }
+            Text(
+                formatVotes(post.upvotes),
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 6.dp)
+            )
+            IconButton(onClick = onDownvote) {
+                Icon(Icons.Default.ThumbDown, null, tint = if (post.isDownvoted) RedError else Color.White)
+            }
+            Spacer(Modifier.width(20.dp))
+            IconButton(onClick = onSave) {
+                Icon(
+                    if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    null,
+                    tint = if (post.isSaved) AmberAccent else Color.White
+                )
             }
         }
     }
@@ -855,7 +1020,12 @@ private fun NewPostDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(pickedName ?: "Attach file (optional)", fontSize = 13.sp, color = if (pickedName != null) TextPrimary else TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     if (pickedName != null) {
-                        IconButton(onClick = { pickedUri = null; pickedName = null }, modifier = Modifier.size(20.dp)) {
+                        IconButton(onClick = {
+                            if (pickedUri != null || pickedName != null) {
+                                pickedUri = null
+                                pickedName = null
+                            }
+                        }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, null, tint = TextMuted, modifier = Modifier.size(14.dp))
                         }
                     }
@@ -914,7 +1084,7 @@ internal fun getTagColor(tag: String): Color = when (tag) {
 
 internal fun getAuthorColor(author: String): Color {
     val colors = listOf(TealPrimary, PurpleAccent, AmberAccent, PinkAccent, GreenSuccess, PurpleLight, TealDark)
-    return colors[Math.abs(author.hashCode()) % colors.size]
+    return colors[abs(author.hashCode()) % colors.size]
 }
 
 private fun formatVotes(v: Int): String = if (v >= 1000) String.format(Locale.US, "%.1fk", v / 1000.0) else v.toString()

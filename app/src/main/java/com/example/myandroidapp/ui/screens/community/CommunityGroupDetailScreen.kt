@@ -1,9 +1,28 @@
 package com.example.myandroidapp.ui.screens.community
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.rememberPagerState
@@ -11,16 +30,46 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -29,8 +78,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.myandroidapp.data.model.*
-import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.data.model.CommunityEntity
+import com.example.myandroidapp.data.model.CommunityMemberEntity
+import com.example.myandroidapp.data.model.CommunityRole
+import com.example.myandroidapp.data.model.MembershipStatus
+import com.example.myandroidapp.ui.theme.AmberAccent
+import com.example.myandroidapp.ui.theme.GreenSuccess
+import com.example.myandroidapp.ui.theme.NavyDark
+import com.example.myandroidapp.ui.theme.NavyMedium
+import com.example.myandroidapp.ui.theme.PurpleAccent
+import com.example.myandroidapp.ui.theme.RedError
+import com.example.myandroidapp.ui.theme.SurfaceCard
+import com.example.myandroidapp.ui.theme.TealDark
+import com.example.myandroidapp.ui.theme.TealPrimary
+import com.example.myandroidapp.ui.theme.TextMuted
+import com.example.myandroidapp.ui.theme.TextPrimary
+import com.example.myandroidapp.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -55,7 +118,8 @@ fun CommunityGroupDetailScreen(
     onComment: (String) -> Unit,
     onSave: (String) -> Unit,
     onProfileClick: (String) -> Unit,
-    onManageMembers: () -> Unit
+    onManageMembers: () -> Unit,
+    onImagePreview: (CommunityPost) -> Unit = {}
 ) {
     val community = communityInfo.entity
     val isMember = communityInfo.membershipStatus == MembershipStatus.APPROVED
@@ -139,7 +203,8 @@ fun CommunityGroupDetailScreen(
                                 onDownvote = { onDownvote(post.id) },
                                 onComment = { onComment(post.id) },
                                 onSave = { onSave(post.id) },
-                                onProfileClick = { onProfileClick(post.authorMemberId) }
+                                onProfileClick = { onProfileClick(post.authorMemberId) },
+                                onImagePreview = { onImagePreview(post) }
                             )
                         }
                     }
@@ -519,7 +584,10 @@ private fun DetailTabRow(
                         .clip(RoundedCornerShape(10.dp))
                         .background(
                             if (isSelected) Brush.linearGradient(
-                                listOf(TealPrimary.copy(0.2f), PurpleAccent.copy(0.12f))
+                                listOf(
+                                    TealPrimary.copy(alpha = 0.2f * bgAlpha),
+                                    PurpleAccent.copy(alpha = 0.12f * bgAlpha)
+                                )
                             )
                             else Brush.horizontalGradient(
                                 listOf(Color.Transparent, Color.Transparent)
@@ -565,7 +633,8 @@ private fun DetailPostCard(
     onDownvote: () -> Unit,
     onComment: () -> Unit,
     onSave: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onImagePreview: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -676,7 +745,8 @@ private fun DetailPostCard(
                 Spacer(Modifier.height(10.dp))
                 MediaPreviewCard(
                     attachmentUri = post.attachmentUri ?: post.attachment?.absolutePath,
-                    attachmentName = post.attachmentName ?: post.attachment?.name
+                    attachmentName = post.attachmentName ?: post.attachment?.name,
+                    onImageClick = onImagePreview
                 )
             }
 

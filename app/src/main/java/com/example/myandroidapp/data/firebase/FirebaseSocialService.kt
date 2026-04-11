@@ -365,6 +365,121 @@ class FirebaseSocialService {
         chatRef.add(data).await()
     }
 
+    /**
+     * Observe ALL chat messages involving the current user (sent or received).
+     * Used to build grouped conversation list for the Inbox.
+     */
+    fun observeAllConversations(userId: String): Flow<List<ChatMessageEntity>> = callbackFlow {
+        var reg1: ListenerRegistration? = null
+        var reg2: ListenerRegistration? = null
+        val sent = mutableListOf<ChatMessageEntity>()
+        val received = mutableListOf<ChatMessageEntity>()
+
+        reg1 = chatRef
+            .whereEqualTo("senderId", userId)
+            .orderBy("sentAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, _ ->
+                sent.clear()
+                sent.addAll(snap?.documents?.mapNotNull { it.toChatMessage() } ?: emptyList())
+                trySend(sent + received)
+            }
+        reg2 = chatRef
+            .whereEqualTo("receiverId", userId)
+            .orderBy("sentAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, _ ->
+                received.clear()
+                received.addAll(snap?.documents?.mapNotNull { it.toChatMessage() } ?: emptyList())
+                trySend(sent + received)
+            }
+        awaitClose { reg1?.remove(); reg2?.remove() }
+    }
+
+    /**
+     * Mark all messages from a specific sender as read.
+     */
+    suspend fun markMessagesRead(currentUserId: String, otherUserId: String) {
+        val unreadMessages = chatRef
+            .whereEqualTo("senderId", otherUserId)
+            .whereEqualTo("receiverId", currentUserId)
+            .whereEqualTo("isRead", false)
+            .get().await()
+
+        val batch = db.batch()
+        unreadMessages.documents.forEach { doc ->
+            batch.update(doc.reference, "isRead", true)
+        }
+        batch.commit().await()
+    }
+
+    // ═══════ Friend System (Phase 4) ═══════
+
+    /**
+     * Observe outgoing friend requests from the given member.
+     */
+    fun observeOutgoingRequests(memberId: String): Flow<List<FriendRequestEntity>> = callbackFlow {
+        val reg = friendRequestsRef
+            .whereEqualTo("fromMemberId", memberId)
+            .whereEqualTo("status", "PENDING")
+            .addSnapshotListener { snap, err ->
+                if (err != null) { close(err); return@addSnapshotListener }
+                val list = snap?.documents?.mapNotNull { it.toFriendRequest() } ?: emptyList()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /**
+     * Direct lookup for a friend request between two users in either direction.
+     */
+    suspend fun getFriendRequestBetween(user1: String, user2: String): Pair<FriendRequestEntity?, String?> {
+        // Check user1 -> user2
+        val outgoing = friendRequestsRef
+            .whereEqualTo("fromMemberId", user1)
+            .whereEqualTo("toMemberId", user2)
+            .get().await()
+        if (!outgoing.isEmpty) {
+            val doc = outgoing.documents.first()
+            return doc.toFriendRequest() to doc.id
+        }
+        // Check user2 -> user1
+        val incoming = friendRequestsRef
+            .whereEqualTo("fromMemberId", user2)
+            .whereEqualTo("toMemberId", user1)
+            .get().await()
+        if (!incoming.isEmpty) {
+            val doc = incoming.documents.first()
+            return doc.toFriendRequest() to doc.id
+        }
+        return null to null
+    }
+
+    /**
+     * Accept a friend request by Firestore document ID.
+     */
+    suspend fun acceptFriendRequestByDocId(docId: String) {
+        friendRequestsRef.document(docId).update("status", "ACCEPTED").await()
+    }
+
+    /**
+     * Delete/unfriend — removes the friend request document entirely.
+     */
+    suspend fun unfriend(currentId: String, targetId: String) {
+        // Find the accepted friend request in either direction
+        val outgoing = friendRequestsRef
+            .whereEqualTo("fromMemberId", currentId)
+            .whereEqualTo("toMemberId", targetId)
+            .whereEqualTo("status", "ACCEPTED")
+            .get().await()
+        outgoing.documents.forEach { it.reference.delete().await() }
+
+        val incoming = friendRequestsRef
+            .whereEqualTo("fromMemberId", targetId)
+            .whereEqualTo("toMemberId", currentId)
+            .whereEqualTo("status", "ACCEPTED")
+            .get().await()
+        incoming.documents.forEach { it.reference.delete().await() }
+    }
+
     // ═══════ Storage ═══════
 
     suspend fun uploadAttachment(uri: Uri, fileName: String): String {

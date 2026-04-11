@@ -25,7 +25,8 @@ data class UserProfileUiState(
     val isCurrentUser: Boolean = false,
     val postCount: Int = 0,
     val requestSent: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val friendRequestDocId: String? = null  // Firestore doc ID for accept/reject operations
 )
 
 // ═══════════════════════════════════════════════════════
@@ -71,13 +72,18 @@ class UserProfileViewModel(
                     }
                 }
 
-                // Check friendship status
-                val friendshipStatus = if (isCurrentUser) {
-                    FriendshipStatus.FRIENDS // self
+                // Check friendship status (with full outgoing detection - Phase 4 fix)
+                val friendshipStatus: FriendshipStatus
+                var docId: String? = null
+
+                if (isCurrentUser) {
+                    friendshipStatus = FriendshipStatus.FRIENDS // self
                 } else {
-                    withContext(Dispatchers.IO) {
+                    val result = withContext(Dispatchers.IO) {
                         checkFriendshipStatus()
                     }
+                    friendshipStatus = result.first
+                    docId = result.second
                 }
 
                 _uiState.update {
@@ -86,6 +92,7 @@ class UserProfileViewModel(
                         posts = allPosts.sortedByDescending { p -> p.id },
                         postCount = allPosts.size,
                         friendshipStatus = friendshipStatus,
+                        friendRequestDocId = docId,
                         isCurrentUser = isCurrentUser,
                         isLoading = false
                     )
@@ -96,25 +103,34 @@ class UserProfileViewModel(
         }
     }
 
-    private suspend fun checkFriendshipStatus(): FriendshipStatus {
-        // Check if already friends (accepted requests in either direction)
+    /**
+     * Phase 4 fix: Now properly checks BOTH incoming AND outgoing requests.
+     * Returns (FriendshipStatus, Firestore docId for the request if applicable)
+     */
+    private suspend fun checkFriendshipStatus(): Pair<FriendshipStatus, String?> {
         try {
-            val friends = firebase.observeAcceptedFriends(currentMemberId).first()
-            val isFriend = friends.any { req ->
-                (req.fromMemberId == currentMemberId && req.toMemberId == targetMemberId) ||
-                (req.fromMemberId == targetMemberId && req.toMemberId == currentMemberId)
+            // Use direct lookup between the two users (any direction, any status)
+            val (request, docId) = firebase.getFriendRequestBetween(currentMemberId, targetMemberId)
+
+            if (request != null && docId != null) {
+                return when {
+                    // ACCEPTED in either direction = FRIENDS
+                    request.status == com.example.myandroidapp.data.model.FriendRequestStatus.ACCEPTED ->
+                        FriendshipStatus.FRIENDS to docId
+                    // PENDING: check who sent it
+                    request.status == com.example.myandroidapp.data.model.FriendRequestStatus.PENDING &&
+                    request.fromMemberId == currentMemberId ->
+                        FriendshipStatus.PENDING_SENT to docId
+                    request.status == com.example.myandroidapp.data.model.FriendRequestStatus.PENDING &&
+                    request.toMemberId == currentMemberId ->
+                        FriendshipStatus.PENDING_RECEIVED to docId
+                    else -> FriendshipStatus.NONE to null
+                }
             }
-            if (isFriend) return FriendshipStatus.FRIENDS
 
-            // Check pending requests
-            val incoming = firebase.observeIncomingRequests(currentMemberId).first()
-            val hasIncoming = incoming.any { it.fromMemberId == targetMemberId }
-            if (hasIncoming) return FriendshipStatus.PENDING_RECEIVED
-
-            // We can't directly check outgoing with current API; treat as NONE
-            return FriendshipStatus.NONE
+            return FriendshipStatus.NONE to null
         } catch (_: Exception) {
-            return FriendshipStatus.NONE
+            return FriendshipStatus.NONE to null
         }
     }
 
@@ -123,6 +139,44 @@ class UserProfileViewModel(
             try {
                 firebase.sendFriendRequest(currentMemberId, targetMemberId)
                 _uiState.update { it.copy(friendshipStatus = FriendshipStatus.PENDING_SENT, requestSent = true) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Phase 4 fix: Accept an incoming friend request
+     */
+    fun acceptFriendRequest() {
+        val docId = _uiState.value.friendRequestDocId ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                firebase.acceptFriendRequestByDocId(docId)
+                _uiState.update { it.copy(friendshipStatus = FriendshipStatus.FRIENDS) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Phase 4 fix: Reject an incoming friend request
+     */
+    fun rejectFriendRequest() {
+        val docId = _uiState.value.friendRequestDocId ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                firebase.deleteFriendRequest(docId)
+                _uiState.update { it.copy(friendshipStatus = FriendshipStatus.NONE, friendRequestDocId = null) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Phase 4: Unfriend — removes the accepted friend request
+     */
+    fun unfriend() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                firebase.unfriend(currentMemberId, targetMemberId)
+                _uiState.update { it.copy(friendshipStatus = FriendshipStatus.NONE, friendRequestDocId = null) }
             } catch (_: Exception) { }
         }
     }
@@ -161,3 +215,4 @@ class UserProfileViewModelFactory(
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
+

@@ -1,18 +1,39 @@
 package com.example.myandroidapp.ui.screens.community
 
 import android.content.Context
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,15 +49,18 @@ import coil.compose.SubcomposeAsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.example.myandroidapp.ui.screens.library.viewer.FileViewerScreen
-import com.example.myandroidapp.ui.theme.*
+import com.example.myandroidapp.ui.theme.NavyLight
+import com.example.myandroidapp.ui.theme.NavyMedium
+import com.example.myandroidapp.ui.theme.PinkAccent
+import com.example.myandroidapp.ui.theme.RedError
+import com.example.myandroidapp.ui.theme.SurfaceCard
+import com.example.myandroidapp.ui.theme.TealPrimary
+import com.example.myandroidapp.ui.theme.TextMuted
+import com.example.myandroidapp.ui.theme.TextPrimary
 import com.example.myandroidapp.util.ScannedFile
 import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
-import java.util.UUID
 
 // ═══════════════════════════════════════════════════════
 // ── Media Preview for Community Feed ──
@@ -68,7 +92,8 @@ fun MediaPreviewCard(
     attachmentUri: String?,
     attachmentName: String?,
     modifier: Modifier = Modifier,
-    onOpenViewer: ((ScannedFile) -> Unit)? = null
+    onOpenViewer: ((ScannedFile) -> Unit)? = null,
+    onImageClick: (() -> Unit)? = null
 ) {
     if (attachmentUri.isNullOrBlank()) return
 
@@ -79,37 +104,72 @@ fun MediaPreviewCard(
     // State for the cached local file (for viewer)
     var cachedFile by remember(attachmentUri) { mutableStateOf<File?>(null) }
     var isDownloading by remember(attachmentUri) { mutableStateOf(false) }
-    var showViewer by remember { mutableStateOf(false) }
+    val viewerFileState = remember(attachmentUri, attachmentName) { mutableStateOf<ScannedFile?>(null) }
+
+    fun openViewer(file: ScannedFile) {
+        if (onOpenViewer != null) {
+            onOpenViewer(file)
+        } else {
+            viewerFileState.value = file
+        }
+    }
 
     // Full-screen viewer overlay
-    if (showViewer && cachedFile != null) {
-        val sf = ScannedFile(
-            name = displayName,
-            absolutePath = cachedFile!!.absolutePath,
-            size = cachedFile!!.length(),
-            lastModified = cachedFile!!.lastModified(),
-            type = mediaType,
-            subfolder = ""
-        )
+    if (viewerFileState.value != null) {
         // Use existing FileViewerScreen as a full-screen overlay
         FileViewerScreen(
-            scannedFile = sf,
-            onDismiss = { showViewer = false }
+            scannedFile = viewerFileState.value!!,
+            onDismiss = { viewerFileState.value = null }
         )
         return // overlay takes over
     }
 
-    val handleClick: () -> Unit = {
-        if (cachedFile != null) {
-            showViewer = true
+    val handleClick: () -> Unit = click@ {
+        if (mediaType == "IMAGE" && onImageClick != null) {
+            onImageClick()
+            return@click
+        }
+
+        val isRemoteVideo = mediaType == "VIDEO" && (
+            attachmentUri.startsWith("http://") || attachmentUri.startsWith("https://")
+        )
+        val isLocalContentOrFileUri =
+            attachmentUri.startsWith("content://") || attachmentUri.startsWith("file://")
+
+        // Stream remote videos directly for smoother startup and to avoid temp-file issues.
+        if (isRemoteVideo || isLocalContentOrFileUri) {
+            openViewer(ScannedFile(
+                name = displayName,
+                absolutePath = attachmentUri,
+                size = 0L,
+                lastModified = System.currentTimeMillis(),
+                type = mediaType,
+                subfolder = ""
+            ))
+        } else if (cachedFile != null) {
+            openViewer(ScannedFile(
+                name = displayName,
+                absolutePath = cachedFile!!.absolutePath,
+                size = cachedFile!!.length(),
+                lastModified = cachedFile!!.lastModified(),
+                type = mediaType,
+                subfolder = ""
+            ))
         } else if (!isDownloading) {
             isDownloading = true
             // Download to temp cache
-            downloadAttachment(context, attachmentUri, displayName, mediaType) { file ->
+            downloadAttachment(context, attachmentUri, displayName) { file ->
                 cachedFile = file
                 isDownloading = false
                 if (file != null) {
-                    showViewer = true
+                    openViewer(ScannedFile(
+                        name = displayName,
+                        absolutePath = file.absolutePath,
+                        size = file.length(),
+                        lastModified = file.lastModified(),
+                        type = mediaType,
+                        subfolder = ""
+                    ))
                 } else {
                     Toast.makeText(context, "Could not open file", Toast.LENGTH_SHORT).show()
                 }
@@ -470,7 +530,6 @@ private fun downloadAttachment(
     context: Context,
     url: String,
     fileName: String,
-    mediaType: String,
     onResult: (File?) -> Unit
 ) {
     Thread {
@@ -511,7 +570,7 @@ private fun downloadAttachment(
                 // Non-Firebase URL — use standard HTTP
                 downloadViaHttp(url, cachedFile, onResult)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 onResult(null)
             }
@@ -533,7 +592,7 @@ private fun downloadViaHttp(
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             onResult(targetFile)
         }
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             onResult(null)
         }
